@@ -1,0 +1,113 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:7.0
+    container_name: rgs-ledger-mongodb
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo-data:/data/db
+    environment:
+      MONGO_INITDB_DATABASE: rgs_ledger
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7.2-alpine
+    container_name: rgs-ledger-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile
+    container_name: rgs-ledger-api
+    restart: unless-stopped
+    ports:
+      - "4000:4000"
+    environment:
+      - NODE_ENV=production
+      - PAYMENT_ENVIRONMENT=SANDBOX
+      - API_PORT=4000
+      - MONGODB_URI=mongodb://mongodb:27017/rgs_ledger
+      - REDIS_URL=redis://redis:6379
+      - JWT_ACCESS_SECRET=docker_secure_access_secret_min_32_chars_ok
+      - JWT_REFRESH_SECRET=docker_secure_refresh_secret_min_32_chars_ok
+      - ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      - COOKIE_SECRET=docker_secure_cookie_secret_min_32_chars_ok
+      - DASHBOARD_URL=http://localhost:5173
+      - CHECKOUT_URL=http://localhost:5174
+      - DEVELOPER_PORTAL_URL=http://localhost:5175
+      - ADMIN_URL=http://localhost:5176
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    container_name: rgs-ledger-dashboard
+    restart: unless-stopped
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+
+  checkout:
+    build:
+      context: .
+      dockerfile: apps/checkout/Dockerfile
+    container_name: rgs-ledger-checkout
+    restart: unless-stopped
+    ports:
+      - "5174:80"
+    depends_on:
+      - api
+
+  developer-portal:
+    build:
+      context: .
+      dockerfile: apps/developer-portal/Dockerfile
+    container_name: rgs-ledger-developer-portal
+    restart: unless-stopped
+    ports:
+      - "5175:80"
+    depends_on:
+      - api
+
+  admin:
+    build:
+      context: .
+      dockerfile: apps/admin/Dockerfile
+    container_name: rgs-ledger-admin
+    restart: unless-stopped
+    ports:
+      - "5176:80"
+    depends_on:
+      - api
+
+volumes:
+  mongo-data:
+  redis-data:

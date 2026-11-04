@@ -1,0 +1,16 @@
+# Shopify Payments App Configuration for RGS Ledger
+client_id = "rgs_ledger_shopify_client_id"
+name = "RGS Ledger Payments"
+application_url = "https://shopify.rgsledger.com"
+embedded = true
+
+[access_scopes]
+scopes = "write_payment_gateways,write_payment_sessions"
+
+[auth]
+redirect_urls = [
+  "https://shopify.rgsledger.com/auth/callback"
+]
+
+[payment]
+offsite_payment_url = "https://checkout.rgsledger.com/pay"

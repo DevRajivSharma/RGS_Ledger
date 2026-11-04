@@ -1,0 +1,10 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/shared" },
+    { "path": "./packages/payment-core" },
+    { "path": "./packages/sdk-node" },
+    { "path": "./packages/sdk-react" },
+    { "path": "./apps/api" }
+  ]
+}

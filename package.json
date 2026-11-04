@@ -1,0 +1,28 @@
+{
+  "name": "rgs-ledger-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "RGS Ledger - Enterprise Fintech Payment Gateway Platform",
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "integrations/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:packages": "npm run --workspace=packages/shared build && npm run --workspace=packages/payment-core build && npm run --workspace=packages/sdk-node build && npm run --workspace=packages/sdk-react build",
+    "build:apps": "npm run --workspace=apps/api build && npm run --workspace=apps/dashboard build && npm run --workspace=apps/checkout build && npm run --workspace=apps/developer-portal build && npm run --workspace=apps/admin build",
+    "test": "npm run test --workspaces --if-present",
+    "test:backend": "npm run --workspace=apps/api test",
+    "test:core": "npm run --workspace=packages/payment-core test",
+    "seed": "npm run --workspace=apps/api seed",
+    "dev:api": "npm run --workspace=apps/api dev",
+    "dev:dashboard": "npm run --workspace=apps/dashboard dev",
+    "dev:checkout": "npm run --workspace=apps/checkout dev",
+    "dev:admin": "npm run --workspace=apps/admin dev",
+    "dev:docs": "npm run --workspace=apps/developer-portal dev"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

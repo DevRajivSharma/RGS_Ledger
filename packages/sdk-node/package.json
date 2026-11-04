@@ -1,0 +1,17 @@
+{
+  "name": "@rgs-ledger/sdk-node",
+  "version": "1.0.0",
+  "description": "Official Node.js SDK for RGS Ledger Payment Gateway Platform",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "@rgs-ledger/shared": "file:../shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

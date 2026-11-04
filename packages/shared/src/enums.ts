@@ -1,0 +1,131 @@
+export enum UserRole {
+  SUPER_ADMIN = 'SUPER_ADMIN',
+  ADMIN = 'ADMIN',
+  MERCHANT_OWNER = 'MERCHANT_OWNER',
+  MERCHANT_ADMIN = 'MERCHANT_ADMIN',
+  DEVELOPER = 'DEVELOPER',
+  FINANCE = 'FINANCE',
+  SUPPORT = 'SUPPORT'
+}
+
+export enum KycStatus {
+  NOT_STARTED = 'NOT_STARTED',
+  PENDING = 'PENDING',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  APPROVED = 'APPROVED',
+  REJECTED = 'REJECTED',
+  ADDITIONAL_INFORMATION_REQUIRED = 'ADDITIONAL_INFORMATION_REQUIRED'
+}
+
+export enum BusinessType {
+  INDIVIDUAL = 'INDIVIDUAL',
+  PROPRIETORSHIP = 'PROPRIETORSHIP',
+  PARTNERSHIP = 'PARTNERSHIP',
+  PRIVATE_LIMITED = 'PRIVATE_LIMITED',
+  PUBLIC_LIMITED = 'PUBLIC_LIMITED',
+  LLP = 'LLP',
+  TRUST_NGO = 'TRUST_NGO'
+}
+
+export enum OrderStatus {
+  CREATED = 'CREATED',
+  ATTEMPTED = 'ATTEMPTED',
+  PROCESSING = 'PROCESSING',
+  AUTHORIZED = 'AUTHORIZED',
+  CAPTURED = 'CAPTURED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED',
+  PARTIALLY_REFUNDED = 'PARTIALLY_REFUNDED',
+  REFUNDED = 'REFUNDED'
+}
+
+export enum PaymentStatus {
+  CREATED = 'CREATED',
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  SUCCESS = 'SUCCESS',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED',
+  EXPIRED = 'EXPIRED'
+}
+
+export enum PaymentMethodType {
+  UPI_INTENT = 'UPI_INTENT',
+  UPI_QR = 'UPI_QR',
+  CARD = 'CARD',
+  NETBANKING = 'NETBANKING',
+  WALLET = 'WALLET'
+}
+
+export enum RefundStatus {
+  CREATED = 'CREATED',
+  PENDING = 'PENDING',
+  PROCESSED = 'PROCESSED',
+  FAILED = 'FAILED',
+  CANCELLED = 'CANCELLED'
+}
+
+export enum SettlementStatus {
+  PENDING = 'PENDING',
+  PROCESSING = 'PROCESSING',
+  SETTLED = 'SETTLED',
+  FAILED = 'FAILED',
+  ON_HOLD = 'ON_HOLD'
+}
+
+export enum ReconciliationStatus {
+  UNRECONCILED = 'UNRECONCILED',
+  MATCHED = 'MATCHED',
+  DISCREPANCY = 'DISCREPANCY',
+  RESOLVED = 'RESOLVED'
+}
+
+export enum EnvironmentMode {
+  SANDBOX = 'SANDBOX',
+  LIVE = 'LIVE'
+}
+
+export enum WebhookEventName {
+  ORDER_CREATED = 'order.created',
+  PAYMENT_CREATED = 'payment.created',
+  PAYMENT_PROCESSING = 'payment.processing',
+  PAYMENT_SUCCEEDED = 'payment.succeeded',
+  PAYMENT_FAILED = 'payment.failed',
+  PAYMENT_CANCELLED = 'payment.cancelled',
+  REFUND_CREATED = 'refund.created',
+  REFUND_PROCESSED = 'refund.processed',
+  REFUND_FAILED = 'refund.failed',
+  SETTLEMENT_CREATED = 'settlement.created',
+  SETTLEMENT_PROCESSED = 'settlement.processed'
+}
+
+export enum LedgerAccountType {
+  ASSET = 'ASSET',
+  LIABILITY = 'LIABILITY',
+  EQUITY = 'EQUITY',
+  REVENUE = 'REVENUE',
+  EXPENSE = 'EXPENSE'
+}
+
+export enum LedgerEntryDirection {
+  DEBIT = 'DEBIT',
+  CREDIT = 'CREDIT'
+}
+
+export enum LedgerTransactionType {
+  PAYMENT_CAPTURE = 'PAYMENT_CAPTURE',
+  PAYMENT_REFUND = 'PAYMENT_REFUND',
+  PROVIDER_FEE = 'PROVIDER_FEE',
+  GST_TAX = 'GST_TAX',
+  MERCHANT_PAYOUT = 'MERCHANT_PAYOUT',
+  ADJUSTMENT = 'ADJUSTMENT',
+  DISPUTE_HOLD = 'DISPUTE_HOLD'
+}
+
+export enum DisputeStatus {
+  OPEN = 'OPEN',
+  UNDER_REVIEW = 'UNDER_REVIEW',
+  WON = 'WON',
+  LOST = 'LOST'
+}

@@ -1,0 +1,15 @@
+{
+  "name": "@rgs-ledger/shopify",
+  "version": "1.0.0",
+  "description": "Shopify Payments App Extension Adapter for RGS Ledger",
+  "main": "dist/shopify-payment-adapter.js",
+  "scripts": {
+    "build": "tsc"
+  },
+  "dependencies": {
+    "@rgs-ledger/shared": "file:../../packages/shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

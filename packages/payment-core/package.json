@@ -1,0 +1,18 @@
+{
+  "name": "@rgs-ledger/payment-core",
+  "version": "1.0.0",
+  "description": "Provider-independent payment engine, state machines, and double-entry ledger for RGS Ledger",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "dependencies": {
+    "@rgs-ledger/shared": "file:../shared"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@rgs-ledger/shared",
+  "version": "1.0.0",
+  "description": "Shared fintech domain models, enums, schemas, and utilities for RGS Ledger",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc",
+    "watch": "tsc -w"
+  },
+  "dependencies": {
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}

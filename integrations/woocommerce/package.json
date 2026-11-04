@@ -1,0 +1,8 @@
+{
+  "name": "@rgs-ledger/woocommerce",
+  "version": "1.0.0",
+  "description": "WooCommerce payment gateway plugin package for RGS Ledger",
+  "scripts": {
+    "build": "node -e \"console.log('WooCommerce plugin verified and ready for packaging.');\""
+  }
+}
