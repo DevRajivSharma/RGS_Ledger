@@ -16,7 +16,7 @@ import {
 } from 'lucide-react';
 import { formatCurrency } from '@rgs-ledger/shared';
 
-const API_BASE = 'http://localhost:4000/api/v1';
+const API_BASE = (import.meta.env.VITE_API_URL as string) || 'http://localhost:4000/api/v1';
 
 export const CheckoutPage: React.FC = () => {
   const { sessionId } = useParams<{ sessionId: string }>();

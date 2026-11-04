@@ -20,7 +20,8 @@
     "dev:dashboard": "npm run --workspace=apps/dashboard dev",
     "dev:checkout": "npm run --workspace=apps/checkout dev",
     "dev:admin": "npm run --workspace=apps/admin dev",
-    "dev:docs": "npm run --workspace=apps/developer-portal dev"
+    "dev:docs": "npm run --workspace=apps/developer-portal dev",
+    "dev:portal": "npm run --workspace=apps/developer-portal dev"
   },
   "devDependencies": {
     "typescript": "^5.4.5"
