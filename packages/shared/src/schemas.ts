@@ -71,7 +71,7 @@ export const CreateCheckoutSessionSchema = z.object({
 
 // Payment Initiation Schema
 export const InitiatePaymentSchema = z.object({
-  orderId: z.string().min(1),
+  orderId: z.string().min(1).optional(),
   method: z.nativeEnum(PaymentMethodType),
   upiId: z.string().optional(),
   cardDetails: z.object({

@@ -12,3 +12,6 @@ Thumbs.db
 coverage/
 .turbo
 *.tsbuildinfo
+.data/
+dist/
+

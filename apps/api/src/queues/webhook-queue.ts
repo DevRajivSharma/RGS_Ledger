@@ -35,8 +35,14 @@ export function isAllowedWebhookUrl(targetUrl: string): { allowed: boolean; reas
 
     const hostname = parsed.hostname.toLowerCase();
 
-    // Allow localhost/127.0.0.1 strictly in DEVELOPMENT mode if needed, but flag it
-    if (config.env === 'production') {
+    // Cloud metadata service is ALWAYS blocked across all environments
+    if (hostname === '169.254.169.254' || hostname === 'metadata.google.internal') {
+      return { allowed: false, reason: 'SSRF Protection: Webhooks cannot target cloud instance metadata service' };
+    }
+
+    // In production, block all loopback, private RFC1918 addresses, and internal domains
+    const isProduction = process.env.NODE_ENV === 'production' || config.env === 'production';
+    if (isProduction) {
       if (
         hostname === 'localhost' ||
         hostname === '127.0.0.1' ||
@@ -44,7 +50,6 @@ export function isAllowedWebhookUrl(targetUrl: string): { allowed: boolean; reas
         hostname.startsWith('10.') ||
         hostname.startsWith('192.168.') ||
         /^172\.(1[6-9]|2[0-9]|3[0-1])\./.test(hostname) ||
-        hostname === '169.254.169.254' ||
         hostname.endsWith('.internal') ||
         hostname.endsWith('.local')
       ) {
