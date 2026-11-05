@@ -31,6 +31,7 @@ export const CheckoutPage: React.FC = () => {
   // Persistent Payment Attempt State
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'EXPIRED'>('IDLE');
+  const [attemptCount, setAttemptCount] = useState<number>(1);
   const [completedPayment, setCompletedPayment] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -44,6 +45,9 @@ export const CheckoutPage: React.FC = () => {
 
   // QR canvas
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  // Concurrency and idempotency refs to prevent React StrictMode double-mount duplicates
+  const isInitiatingRef = useRef<Record<string, boolean>>({});
 
   // Fetch session and synchronize or initiate payment attempt
   const fetchSession = async () => {
@@ -66,7 +70,7 @@ export const CheckoutPage: React.FC = () => {
             setCompletedPayment(json.data.payment);
           }
         } else {
-          // Phase 2 requirement: Automatically create initial PENDING payment attempt on QR load
+          // Automatically create initial PENDING payment attempt on QR load with stable idempotency
           await initiatePaymentAttempt('UPI_QR', json.data);
         }
       } else {
@@ -79,11 +83,25 @@ export const CheckoutPage: React.FC = () => {
     }
   };
 
-  const initiatePaymentAttempt = async (method: string, currentSessionData?: any) => {
+  const initiatePaymentAttempt = async (method: string, currentSessionData?: any, attemptNum?: number) => {
+    if (!sessionId) return;
+    const currentAttempt = attemptNum ?? attemptCount;
+    const lockKey = `${sessionId}_${method}_${currentAttempt}`;
+    if (isInitiatingRef.current[lockKey]) {
+      return;
+    }
+    isInitiatingRef.current[lockKey] = true;
+
+    // Stable idempotency key derived from session ID, method, and attempt index (persists across StrictMode remounts)
+    const idempotencyKey = `idemp_cs_${sessionId}_${method}_${currentAttempt}`;
+
     try {
       const res = await fetch(`${API_BASE}/checkout/sessions/${sessionId}/initiate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Idempotency-Key': idempotencyKey
+        },
         body: JSON.stringify({ method })
       });
       const json = await res.json();
@@ -105,6 +123,8 @@ export const CheckoutPage: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to initiate payment attempt:', err);
+    } finally {
+      isInitiatingRef.current[lockKey] = false;
     }
   };
 
@@ -330,8 +350,10 @@ export const CheckoutPage: React.FC = () => {
 
           <button
             onClick={() => {
+              const nextAttempt = attemptCount + 1;
+              setAttemptCount(nextAttempt);
               setPaymentStatus('IDLE');
-              initiatePaymentAttempt(activeTab);
+              initiatePaymentAttempt(activeTab, undefined, nextAttempt);
             }}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-2"
           >

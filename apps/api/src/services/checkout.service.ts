@@ -148,25 +148,48 @@ export class CheckoutService {
       throw err;
     }
 
-    // Check if session already has a PENDING payment for this method
-    if (session.paymentId) {
-      const existingPayment = await Payment.findById(session.paymentId).exec();
-      if (existingPayment && existingPayment.status === 'PENDING' && existingPayment.method === data.method) {
-        const order = await Order.findById(session.orderId).exec();
-        const upiUri = GenericUPIIntentProvider.generateIntentUri({
-          payeeVpa: 'sandbox-merchant@rgsbank',
-          payeeName: 'Sandbox Merchant',
-          transactionRef: String(existingPayment._id),
-          amountPaise: existingPayment.amount,
-          currency: existingPayment.currency
-        });
-        return {
-          payment: existingPayment,
-          order: order!,
-          upiUri,
-          sessionId: session._id
-        };
-      }
+    const order = await Order.findById(session.orderId).exec();
+    if (!order) {
+      const err: any = new Error(`Order ${session.orderId} not found`);
+      err.status = 404;
+      err.code = 'ORDER_NOT_FOUND';
+      throw err;
+    }
+
+    if (order.status === 'CAPTURED') {
+      const err: any = new Error('This order has already been successfully paid and captured.');
+      err.status = 400;
+      err.code = 'ORDER_ALREADY_CAPTURED';
+      throw err;
+    }
+
+    // Check if session or order already has an active PENDING payment
+    let existingPayment = session.paymentId ? await Payment.findById(session.paymentId).exec() : null;
+    if (!existingPayment || existingPayment.status !== 'PENDING') {
+      existingPayment = await Payment.findOne({
+        orderId: session.orderId,
+        status: 'PENDING'
+      }).sort({ createdAt: -1 }).exec();
+    }
+
+    if (existingPayment && existingPayment.status === 'PENDING') {
+      session.paymentId = existingPayment._id;
+      await session.save();
+
+      const upiUri = GenericUPIIntentProvider.generateIntentUri({
+        payeeVpa: 'sandbox-merchant@rgsbank',
+        payeeName: 'Sandbox Merchant',
+        transactionRef: String(existingPayment._id),
+        amountPaise: existingPayment.amount,
+        currency: existingPayment.currency
+      });
+
+      return {
+        payment: existingPayment,
+        order,
+        upiUri,
+        sessionId: session._id
+      };
     }
 
     // Create a new persistent payment attempt in PENDING state

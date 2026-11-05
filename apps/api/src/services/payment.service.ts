@@ -23,9 +23,12 @@ import { enqueueWebhook } from '../queues/webhook-queue';
 
 export class PaymentService {
   private static sandboxProvider = new SandboxPaymentProvider();
+  private static initiationLocks = new Map<string, Promise<any>>();
 
   /**
-   * Phase 1: Creates a persistent payment attempt in PENDING state in MongoDB
+   * Phase 1: Creates a persistent payment attempt in PENDING state in MongoDB.
+   * Concurrency-safe: awaits in-flight creations, checks active PENDING records,
+   * and handles database-level partial unique index collisions atomically.
    */
   static async createPaymentAttempt(data: {
     orderId: string;
@@ -41,75 +44,167 @@ export class PaymentService {
     bankCode?: string;
     customerIp?: string;
   }): Promise<{ payment: IPayment; order: IOrder; upiUri: string }> {
-    const order = await Order.findById(data.orderId).exec();
-    if (!order) {
-      const err: any = new Error(`Order ${data.orderId} not found`);
-      err.status = 404;
-      err.code = 'ORDER_NOT_FOUND';
-      throw err;
-    }
-
-    if (order.status === OrderStatus.CAPTURED) {
-      const err: any = new Error('This order has already been successfully paid and captured.');
-      err.status = 400;
-      err.code = 'ORDER_ALREADY_CAPTURED';
-      throw err;
-    }
-
-    // Check Order State Machine transition to ATTEMPTED
-    PaymentStateMachine.assertOrderTransition(order.status, OrderStatus.ATTEMPTED);
-    order.status = OrderStatus.ATTEMPTED;
-    order.attemptsCount += 1;
-    await order.save();
-
-    const paymentId = generateRandomId('pay');
-    const providerPaymentId = `sbx_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
-
-    // Create Initial Payment Record in PENDING state in MongoDB
-    const payment = await Payment.create({
-      _id: paymentId,
-      orderId: order._id,
-      merchantId: order.merchantId,
-      amount: order.amount,
-      currency: order.currency,
-      status: PaymentStatus.PENDING,
-      method: data.method,
-      upiId: data.upiId,
-      cardNetwork: data.cardDetails?.cardNumber?.startsWith('4') ? 'VISA' : (data.cardDetails ? 'MASTERCARD' : undefined),
-      cardLast4: data.cardDetails?.cardNumber ? data.cardDetails.cardNumber.slice(-4) : undefined,
-      bankCode: data.bankCode,
-      providerPaymentId,
-      environment: order.environment || EnvironmentMode.SANDBOX
-    });
-
-    // Generate UPI Intent URI pointing to this exact payment attempt
-    const upiUri = GenericUPIIntentProvider.generateIntentUri({
-      payeeVpa: 'sandbox-merchant@rgsbank',
-      payeeName: 'Sandbox Merchant',
-      transactionRef: String(payment._id),
-      amountPaise: payment.amount,
-      currency: payment.currency
-    });
-
-    // Enqueue payment.created webhook event
-    enqueueWebhook({
-      merchantId: order.merchantId,
-      event: 'payment.created',
-      payload: {
-        paymentId: String(payment._id),
-        orderId: String(order._id),
-        amount: payment.amount,
-        currency: payment.currency,
-        status: payment.status,
-        method: payment.method
+    // Await any concurrent in-flight payment creation for this order
+    const existingLock = this.initiationLocks.get(data.orderId);
+    if (existingLock) {
+      try {
+        await existingLock;
+      } catch {
+        // proceed to verify database state
       }
-    });
 
-    return {
-      payment,
-      order,
-      upiUri
-    };
+      // Check if the previous concurrent request already created an active PENDING payment
+      const activePending = await Payment.findOne({
+        orderId: data.orderId,
+        status: PaymentStatus.PENDING
+      }).exec();
+
+      if (activePending) {
+        const order = await Order.findById(data.orderId).exec();
+        const upiUri = GenericUPIIntentProvider.generateIntentUri({
+          payeeVpa: 'sandbox-merchant@rgsbank',
+          payeeName: 'Sandbox Merchant',
+          transactionRef: String(activePending._id),
+          amountPaise: activePending.amount,
+          currency: activePending.currency
+        });
+        return {
+          payment: activePending,
+          order: order!,
+          upiUri
+        };
+      }
+    }
+
+    // Synchronously claim the lock before any await so concurrent requests queue
+    let resolveLock!: () => void;
+    const lockPromise = new Promise<void>((resolve) => {
+      resolveLock = resolve;
+    });
+    this.initiationLocks.set(data.orderId, lockPromise);
+
+    try {
+      const order = await Order.findById(data.orderId).exec();
+      if (!order) {
+        const err: any = new Error(`Order ${data.orderId} not found`);
+        err.status = 404;
+        err.code = 'ORDER_NOT_FOUND';
+        throw err;
+      }
+
+      if (order.status === OrderStatus.CAPTURED) {
+        const err: any = new Error('This order has already been successfully paid and captured.');
+        err.status = 400;
+        err.code = 'ORDER_ALREADY_CAPTURED';
+        throw err;
+      }
+
+      // Check if an active PENDING payment already exists for this order
+      const existingPending = await Payment.findOne({
+        orderId: order._id,
+        status: PaymentStatus.PENDING
+      }).exec();
+
+      if (existingPending) {
+        const upiUri = GenericUPIIntentProvider.generateIntentUri({
+          payeeVpa: 'sandbox-merchant@rgsbank',
+          payeeName: 'Sandbox Merchant',
+          transactionRef: String(existingPending._id),
+          amountPaise: existingPending.amount,
+          currency: existingPending.currency
+        });
+        return {
+          payment: existingPending,
+          order,
+          upiUri
+        };
+      }
+      // Transition order status to ATTEMPTED if currently in CREATED or FAILED
+      if (order.status !== OrderStatus.ATTEMPTED) {
+        PaymentStateMachine.assertOrderTransition(order.status, OrderStatus.ATTEMPTED);
+        order.status = OrderStatus.ATTEMPTED;
+      }
+      order.attemptsCount += 1;
+      await order.save();
+
+      const paymentId = generateRandomId('pay');
+      const providerPaymentId = `sbx_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      let payment: IPayment;
+      try {
+        // Create Initial Payment Record in PENDING state in MongoDB
+        payment = await Payment.create({
+          _id: paymentId,
+          orderId: order._id,
+          merchantId: order.merchantId,
+          amount: order.amount,
+          currency: order.currency,
+          status: PaymentStatus.PENDING,
+          method: data.method,
+          upiId: data.upiId,
+          cardNetwork: data.cardDetails?.cardNumber?.startsWith('4') ? 'VISA' : (data.cardDetails ? 'MASTERCARD' : undefined),
+          cardLast4: data.cardDetails?.cardNumber ? data.cardDetails.cardNumber.slice(-4) : undefined,
+          bankCode: data.bankCode,
+          providerPaymentId,
+          environment: order.environment || EnvironmentMode.SANDBOX
+        });
+      } catch (createErr: any) {
+        // Atomic protection: if partial unique index on { orderId: 1, status: PENDING } caught a race
+        if (createErr.code === 11000 || createErr.name === 'MongoServerError') {
+          const racePending = await Payment.findOne({
+            orderId: order._id,
+            status: PaymentStatus.PENDING
+          }).exec();
+          if (racePending) {
+            const upiUri = GenericUPIIntentProvider.generateIntentUri({
+              payeeVpa: 'sandbox-merchant@rgsbank',
+              payeeName: 'Sandbox Merchant',
+              transactionRef: String(racePending._id),
+              amountPaise: racePending.amount,
+              currency: racePending.currency
+            });
+            return {
+              payment: racePending,
+              order,
+              upiUri
+            };
+          }
+        }
+        throw createErr;
+      }
+
+      // Generate UPI Intent URI pointing to this exact payment attempt
+      const upiUri = GenericUPIIntentProvider.generateIntentUri({
+        payeeVpa: 'sandbox-merchant@rgsbank',
+        payeeName: 'Sandbox Merchant',
+        transactionRef: String(payment._id),
+        amountPaise: payment.amount,
+        currency: payment.currency
+      });
+
+      // Enqueue payment.created webhook event
+      enqueueWebhook({
+        merchantId: order.merchantId,
+        event: 'payment.created',
+        payload: {
+          paymentId: String(payment._id),
+          orderId: String(order._id),
+          amount: payment.amount,
+          currency: payment.currency,
+          status: payment.status,
+          method: payment.method
+        }
+      });
+
+      return {
+        payment,
+        order,
+        upiUri
+      };
+    } finally {
+      this.initiationLocks.delete(data.orderId);
+      resolveLock();
+    }
   }
 
   /**
@@ -164,6 +259,22 @@ export class PaymentService {
       order.status = OrderStatus.CAPTURED;
       order.amountPaid = order.amount;
       await order.save();
+
+      // Auto-cancel any remaining orphan PENDING payment attempts for this order
+      await Payment.updateMany(
+        {
+          orderId: order._id,
+          _id: { $ne: payment._id },
+          status: PaymentStatus.PENDING
+        },
+        {
+          $set: {
+            status: PaymentStatus.CANCELLED,
+            errorCode: 'ORDER_CAPTURED_SUPERSEDED',
+            errorDescription: `Superseded: Order successfully captured by payment ${payment._id}`
+          }
+        }
+      ).exec();
 
       // Record double-entry financial ledger journal
       const journalBatch = DoubleEntryLedger.createPaymentCaptureJournal({

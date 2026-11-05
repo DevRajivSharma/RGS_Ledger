@@ -236,6 +236,15 @@ const PaymentSchema = new Schema<IPayment>({
 
 PaymentSchema.index({ merchantId: 1, createdAt: -1 });
 PaymentSchema.index({ merchantId: 1, status: 1 });
+// Atomic database-level protection against multiple active payment attempts for the same order
+PaymentSchema.index(
+  { orderId: 1, status: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: PaymentStatus.PENDING },
+    name: 'unique_active_order_payment'
+  }
+);
 
 export const Payment = mongoose.model<IPayment>('Payment', PaymentSchema);
 
