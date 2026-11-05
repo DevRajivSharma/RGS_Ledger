@@ -3,16 +3,18 @@ import { useParams, useNavigate } from 'react-router-dom';
 import QRCode from 'qrcode';
 import {
   ShieldCheck,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
   QrCode,
   Smartphone,
   CreditCard,
   Building,
-  CheckCircle2,
-  XCircle,
+  RefreshCw,
   Clock,
   ArrowRight,
-  RefreshCw,
-  Lock
+  Lock,
+  RotateCcw
 } from 'lucide-react';
 import { formatCurrency } from '@rgs-ledger/shared';
 
@@ -26,8 +28,9 @@ export const CheckoutPage: React.FC = () => {
   const [sessionData, setSessionData] = useState<any>(null);
   const [activeTab, setActiveTab] = useState<'UPI_QR' | 'UPI_INTENT' | 'CARD' | 'NETBANKING'>('UPI_QR');
   
-  // Payment Status states
-  const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'EXPIRED'>('IDLE');
+  // Persistent Payment Attempt State
+  const [paymentId, setPaymentId] = useState<string | null>(null);
+  const [paymentStatus, setPaymentStatus] = useState<'IDLE' | 'PENDING' | 'PROCESSING' | 'SUCCESS' | 'FAILED' | 'EXPIRED'>('IDLE');
   const [completedPayment, setCompletedPayment] = useState<any>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
 
@@ -42,33 +45,78 @@ export const CheckoutPage: React.FC = () => {
   // QR canvas
   const qrCanvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  useEffect(() => {
-    async function fetchSession() {
-      if (!sessionId) return;
-      try {
-        const res = await fetch(`${API_BASE}/checkout/sessions/${sessionId}`);
-        const json = await res.json();
-        if (json.success && json.data) {
-          setSessionData(json.data);
-          if (json.data.session.status === 'EXPIRED') {
-            setPaymentStatus('EXPIRED');
+  // Fetch session and synchronize or initiate payment attempt
+  const fetchSession = async () => {
+    if (!sessionId) return;
+    try {
+      const res = await fetch(`${API_BASE}/checkout/sessions/${sessionId}`);
+      const json = await res.json();
+      if (json.success && json.data) {
+        setSessionData(json.data);
+        if (json.data.session.status === 'EXPIRED') {
+          setPaymentStatus('EXPIRED');
+          return;
+        }
+
+        if (json.data.payment) {
+          // Retain existing transaction state across page reloads
+          setPaymentId(json.data.payment.id);
+          setPaymentStatus(json.data.payment.status);
+          if (json.data.payment.status === 'SUCCESS') {
+            setCompletedPayment(json.data.payment);
           }
         } else {
-          setPaymentStatus('EXPIRED');
+          // Phase 2 requirement: Automatically create initial PENDING payment attempt on QR load
+          await initiatePaymentAttempt('UPI_QR', json.data);
         }
-      } catch {
+      } else {
         setPaymentStatus('EXPIRED');
-      } finally {
-        setLoading(false);
       }
+    } catch {
+      setPaymentStatus('EXPIRED');
+    } finally {
+      setLoading(false);
     }
+  };
+
+  const initiatePaymentAttempt = async (method: string, currentSessionData?: any) => {
+    try {
+      const res = await fetch(`${API_BASE}/checkout/sessions/${sessionId}/initiate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ method })
+      });
+      const json = await res.json();
+      if (json.success && json.data?.payment) {
+        setPaymentId(json.data.payment._id);
+        setPaymentStatus(json.data.payment.status || 'PENDING');
+        const activeData = currentSessionData || sessionData;
+        if (activeData) {
+          setSessionData({
+            ...activeData,
+            session: {
+              ...activeData.session,
+              paymentId: json.data.payment._id,
+              upiUri: json.data.upiUri || activeData.session.upiUri
+            },
+            payment: json.data.payment
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to initiate payment attempt:', err);
+    }
+  };
+
+  useEffect(() => {
     fetchSession();
   }, [sessionId]);
 
   // Generate QR code when canvas is ready
   useEffect(() => {
-    if (sessionData?.session?.upiUri && qrCanvasRef.current && activeTab === 'UPI_QR') {
-      QRCode.toCanvas(qrCanvasRef.current, sessionData.session.upiUri, {
+    const upiUri = sessionData?.session?.upiUri;
+    if (upiUri && qrCanvasRef.current && activeTab === 'UPI_QR') {
+      QRCode.toCanvas(qrCanvasRef.current, upiUri, {
         width: 180,
         margin: 1,
         color: { dark: '#0F172A', light: '#FFFFFF' }
@@ -76,14 +124,30 @@ export const CheckoutPage: React.FC = () => {
     }
   }, [sessionData, activeTab]);
 
-  const handleProcessPayment = async (methodOverride?: string, upiOverride?: string) => {
+  // Handle switching tabs
+  const handleTabChange = async (tab: 'UPI_QR' | 'UPI_INTENT' | 'CARD' | 'NETBANKING') => {
+    setActiveTab(tab);
+    // If switching methods and current payment is not SUCCESS, ensure payment attempt method is recorded
+    if (paymentStatus !== 'SUCCESS') {
+      await initiatePaymentAttempt(tab);
+    }
+  };
+
+  // Phase 3 & 4: Process / Simulate resolution on the SAME transaction
+  const handleProcessPayment = async (
+    methodOverride?: string,
+    upiOverride?: string,
+    actionOverride?: 'SUCCESS' | 'FAILED' | 'PENDING'
+  ) => {
     setPaymentStatus('PROCESSING');
     setErrorMessage('');
 
     const method = methodOverride || activeTab;
 
     let payload: any = {
+      paymentId: paymentId || sessionData?.session?.paymentId,
       method: method === 'UPI_QR' ? 'UPI_QR' : method,
+      action: actionOverride,
       upiId: upiOverride || (method.startsWith('UPI') ? upiId : undefined)
     };
 
@@ -109,24 +173,64 @@ export const CheckoutPage: React.FC = () => {
 
       const json = await res.json();
 
-      if (json.success && json.data?.payment?.status === 'SUCCESS') {
-        setCompletedPayment(json.data.payment);
-        setPaymentStatus('SUCCESS');
+      if (json.success && json.data?.payment) {
+        const updatedPayment = json.data.payment;
+        setPaymentId(updatedPayment._id);
 
-        // PostMessage to parent if embedded in iframe
-        if (window.parent) {
-          window.parent.postMessage({
-            type: 'RGS_PAYMENT_SUCCESS',
-            payload: { paymentId: json.data.payment._id, orderId: json.data.payment.orderId }
-          }, '*');
+        if (updatedPayment.status === 'SUCCESS') {
+          setCompletedPayment(updatedPayment);
+          setPaymentStatus('SUCCESS');
+
+          if (window.parent) {
+            window.parent.postMessage({
+              type: 'RGS_PAYMENT_SUCCESS',
+              payload: { paymentId: updatedPayment._id, orderId: updatedPayment.orderId }
+            }, '*');
+          }
+        } else if (updatedPayment.status === 'PENDING') {
+          setPaymentStatus('PENDING');
+        } else {
+          setPaymentStatus('FAILED');
+          setErrorMessage(updatedPayment.errorDescription || 'Payment declined by user in UPI App');
         }
       } else {
         setPaymentStatus('FAILED');
-        setErrorMessage(json.error?.message || json.data?.payment?.errorDescription || 'Payment declined by banking gateway');
+        setErrorMessage(json.error?.message || 'Payment declined by banking gateway');
       }
     } catch (err: any) {
       setPaymentStatus('FAILED');
       setErrorMessage(err.message || 'Network communication error during payment processing');
+    }
+  };
+
+  // Phase 5: Simulated Provider Webhook Callback (resolves SAME pending payment)
+  const handleSimulatedProviderCallback = async (status: 'SUCCESS' | 'FAILED') => {
+    if (!paymentId) return;
+    setPaymentStatus('PROCESSING');
+
+    try {
+      const res = await fetch(`${API_BASE}/payments/${paymentId}/simulate-callback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status })
+      });
+      const json = await res.json();
+
+      if (json.success && json.data?.payment) {
+        const updated = json.data.payment;
+        if (updated.status === 'SUCCESS') {
+          setCompletedPayment(updated);
+          setPaymentStatus('SUCCESS');
+        } else if (updated.status === 'FAILED') {
+          setPaymentStatus('FAILED');
+          setErrorMessage(updated.errorDescription || 'Transaction declined by provider callback');
+        } else {
+          setPaymentStatus('PENDING');
+        }
+      }
+    } catch (err: any) {
+      setPaymentStatus('FAILED');
+      setErrorMessage(err.message || 'Callback execution error');
     }
   };
 
@@ -162,15 +266,19 @@ export const CheckoutPage: React.FC = () => {
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Payment ID:</span>
-              <span className="font-mono text-blue-400 font-medium">{completedPayment?._id}</span>
+              <span className="font-mono text-blue-400 font-medium">{completedPayment?._id || paymentId}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Order ID:</span>
+              <span className="font-mono text-slate-300">{sessionData?.session?.orderId}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Merchant:</span>
               <span className="text-slate-200 font-semibold">{sessionData?.merchant?.businessName}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400">Payment Method:</span>
-              <span className="text-slate-200">{completedPayment?.method || 'UPI'}</span>
+              <span className="text-slate-400">Status:</span>
+              <span className="font-bold text-emerald-400">CAPTURED</span>
             </div>
           </div>
 
@@ -205,16 +313,30 @@ export const CheckoutPage: React.FC = () => {
             <p className="text-xs text-rose-400 font-medium mt-1">{errorMessage}</p>
           </div>
 
+          <div className="bg-slate-950 rounded-2xl p-4 border border-slate-800 text-xs text-left space-y-2">
+            <div className="flex justify-between">
+              <span className="text-slate-400">Payment Attempt ID:</span>
+              <span className="font-mono text-rose-400 font-medium">{paymentId}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Order ID:</span>
+              <span className="font-mono text-slate-300">{sessionData?.session?.orderId}</span>
+            </div>
+          </div>
+
           <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-400">
             No funds were deducted. You can retry with a different UPI ID, card, or banking method.
           </div>
 
           <button
-            onClick={() => setPaymentStatus('IDLE')}
+            onClick={() => {
+              setPaymentStatus('IDLE');
+              initiatePaymentAttempt(activeTab);
+            }}
             className="w-full py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-2"
           >
             <RefreshCw className="h-4 w-4" />
-            <span>Try Another Payment Method</span>
+            <span>Try Another Payment Attempt</span>
           </button>
         </div>
       </div>
@@ -232,7 +354,7 @@ export const CheckoutPage: React.FC = () => {
             <p className="text-xs text-slate-400 mt-1">Please do not refresh or close this window.</p>
           </div>
           <div className="p-3 bg-slate-950 border border-slate-800 rounded-xl text-xs text-slate-400 font-mono">
-            Verifying 2FA and nodal gateway authorization...
+            Transaction: {paymentId} · Verifying UPI / Nodal Gateway...
           </div>
         </div>
       </div>
@@ -268,6 +390,24 @@ export const CheckoutPage: React.FC = () => {
           </div>
         </div>
 
+        {/* Real-Time Payment Attempt Tracking Bar */}
+        <div className="bg-slate-950/90 px-4 py-2 border-b border-slate-800 flex items-center justify-between text-[11px]">
+          <div className="flex items-center space-x-1.5 truncate max-w-[200px]">
+            <span className="text-slate-500">Order:</span>
+            <span className="font-mono text-slate-300 truncate">{sessionData?.session?.orderId}</span>
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <span className="text-slate-500">Payment:</span>
+            <span className="font-mono text-blue-400 font-medium">
+              {paymentId || 'Creating...'}
+            </span>
+            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/10 text-amber-400 border border-amber-500/20">
+              {paymentStatus === 'IDLE' ? 'PENDING' : paymentStatus}
+            </span>
+          </div>
+        </div>
+
         {/* Sandbox Simulation Notice */}
         <div className="bg-amber-500/10 border-b border-amber-500/20 px-4 py-2 flex items-center justify-between text-[11px] text-amber-300 font-semibold">
           <span className="flex items-center space-x-1.5">
@@ -277,10 +417,48 @@ export const CheckoutPage: React.FC = () => {
           <span className="font-mono text-[10px] opacity-75">Simulated Gateway</span>
         </div>
 
+        {/* Dedicated Pending Notification Banner if held in PENDING */}
+        {paymentStatus === 'PENDING' && (
+          <div className="bg-blue-950/40 border-b border-blue-800/40 p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Clock className="h-4 w-4 text-amber-400 animate-pulse" />
+                <span className="text-xs font-bold text-white">Payment Attempt Pending</span>
+              </div>
+              <button
+                onClick={fetchSession}
+                className="text-[11px] text-blue-400 hover:text-blue-300 flex items-center space-x-1"
+              >
+                <RefreshCw className="h-3 w-3" />
+                <span>Check Status</span>
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-300">
+              Awaiting authorization from customer UPI app. Transaction ID: <span className="font-mono text-blue-400">{paymentId}</span>
+            </p>
+            <div className="grid grid-cols-2 gap-2 pt-1">
+              <button
+                onClick={() => handleSimulatedProviderCallback('SUCCESS')}
+                className="py-1.5 px-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-300 border border-emerald-500/30 rounded-lg text-[10px] font-bold flex items-center justify-center space-x-1"
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                <span>Simulate Callback: Success</span>
+              </button>
+              <button
+                onClick={() => handleSimulatedProviderCallback('FAILED')}
+                className="py-1.5 px-2 bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/30 rounded-lg text-[10px] font-bold flex items-center justify-center space-x-1"
+              >
+                <XCircle className="h-3 w-3" />
+                <span>Simulate Callback: Decline</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Payment Method Selector Tabs */}
         <div className="grid grid-cols-4 p-2 bg-slate-950/60 border-b border-slate-800 gap-1 text-xs">
           <button
-            onClick={() => setActiveTab('UPI_QR')}
+            onClick={() => handleTabChange('UPI_QR')}
             className={`py-2 rounded-lg font-bold flex flex-col items-center space-y-1 transition-all ${
               activeTab === 'UPI_QR' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'
             }`}
@@ -290,7 +468,7 @@ export const CheckoutPage: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('UPI_INTENT')}
+            onClick={() => handleTabChange('UPI_INTENT')}
             className={`py-2 rounded-lg font-bold flex flex-col items-center space-y-1 transition-all ${
               activeTab === 'UPI_INTENT' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'
             }`}
@@ -300,7 +478,7 @@ export const CheckoutPage: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('CARD')}
+            onClick={() => handleTabChange('CARD')}
             className={`py-2 rounded-lg font-bold flex flex-col items-center space-y-1 transition-all ${
               activeTab === 'CARD' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'
             }`}
@@ -310,7 +488,7 @@ export const CheckoutPage: React.FC = () => {
           </button>
 
           <button
-            onClick={() => setActiveTab('NETBANKING')}
+            onClick={() => handleTabChange('NETBANKING')}
             className={`py-2 rounded-lg font-bold flex flex-col items-center space-y-1 transition-all ${
               activeTab === 'NETBANKING' ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' : 'text-slate-400 hover:text-white'
             }`}
@@ -335,22 +513,29 @@ export const CheckoutPage: React.FC = () => {
 
               <div className="flex items-center space-x-1.5 text-xs text-slate-400">
                 <Clock className="h-3.5 w-3.5 text-amber-400" />
-                <span>QR valid for next 14:59 minutes</span>
+                <span>QR linked to Payment: <strong className="text-blue-400 font-mono">{paymentId}</strong></span>
               </div>
 
-              <div className="w-full pt-2">
+              <div className="w-full pt-2 space-y-2">
                 <button
-                  onClick={() => handleProcessPayment('UPI_QR', 'success@rgs')}
+                  onClick={() => handleProcessPayment('UPI_QR', 'success@rgs', 'SUCCESS')}
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 transition-all flex items-center justify-center space-x-1.5"
                 >
                   <CheckCircle2 className="h-4 w-4" />
                   <span>Simulate "Paid on UPI App" (Success)</span>
                 </button>
                 <button
-                  onClick={() => handleProcessPayment('UPI_QR', 'fail@rgs')}
-                  className="w-full mt-2 py-2 bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
+                  onClick={() => handleProcessPayment('UPI_QR', 'fail@rgs', 'FAILED')}
+                  className="w-full py-2 bg-slate-800 hover:bg-slate-700 text-rose-400 rounded-xl text-xs font-semibold border border-slate-700 transition-all"
                 >
                   Simulate "Declined on UPI App" (Failure)
+                </button>
+                <button
+                  onClick={() => handleProcessPayment('UPI_QR', 'pending@rgs', 'PENDING')}
+                  className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all flex items-center justify-center space-x-1.5"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Simulate "Payment Pending" (Awaiting PSP)</span>
                 </button>
               </div>
             </div>
@@ -363,28 +548,28 @@ export const CheckoutPage: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs')}
+                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs', 'SUCCESS')}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-blue-500 text-xs font-bold text-white flex items-center space-x-2 transition-all"
                 >
                   <span className="h-3 w-3 rounded-full bg-blue-500"></span>
                   <span>Google Pay</span>
                 </button>
                 <button
-                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs')}
+                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs', 'SUCCESS')}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-purple-500 text-xs font-bold text-white flex items-center space-x-2 transition-all"
                 >
                   <span className="h-3 w-3 rounded-full bg-purple-500"></span>
                   <span>PhonePe</span>
                 </button>
                 <button
-                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs')}
+                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs', 'SUCCESS')}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-sky-500 text-xs font-bold text-white flex items-center space-x-2 transition-all"
                 >
                   <span className="h-3 w-3 rounded-full bg-sky-500"></span>
                   <span>Paytm</span>
                 </button>
                 <button
-                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs')}
+                  onClick={() => handleProcessPayment('UPI_INTENT', 'success@rgs', 'SUCCESS')}
                   className="p-3 rounded-xl bg-slate-950 border border-slate-800 hover:border-emerald-500 text-xs font-bold text-white flex items-center space-x-2 transition-all"
                 >
                   <span className="h-3 w-3 rounded-full bg-emerald-500"></span>
@@ -403,12 +588,22 @@ export const CheckoutPage: React.FC = () => {
                     className="flex-1 bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-blue-500 font-mono"
                   />
                   <button
-                    onClick={() => handleProcessPayment('UPI_INTENT', upiId)}
+                    onClick={() => handleProcessPayment('UPI_INTENT', upiId, 'SUCCESS')}
                     className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold shadow-md shadow-blue-500/20"
                   >
                     Verify & Pay
                   </button>
                 </div>
+              </div>
+
+              <div className="pt-1">
+                <button
+                  onClick={() => handleProcessPayment('UPI_INTENT', 'pending@rgs', 'PENDING')}
+                  className="w-full py-2 bg-amber-500/10 hover:bg-amber-500/20 text-amber-300 rounded-xl text-xs font-semibold border border-amber-500/30 transition-all flex items-center justify-center space-x-1.5"
+                >
+                  <Clock className="h-3.5 w-3.5" />
+                  <span>Simulate "Payment Pending" (Awaiting PSP)</span>
+                </button>
               </div>
             </div>
           )}
@@ -459,7 +654,7 @@ export const CheckoutPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => handleProcessPayment('CARD')}
+                onClick={() => handleProcessPayment('CARD', undefined, 'SUCCESS')}
                 className="w-full mt-2 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all flex items-center justify-center space-x-1.5"
               >
                 <Lock className="h-3.5 w-3.5" />
@@ -489,7 +684,7 @@ export const CheckoutPage: React.FC = () => {
               </div>
 
               <button
-                onClick={() => handleProcessPayment('NETBANKING')}
+                onClick={() => handleProcessPayment('NETBANKING', undefined, 'SUCCESS')}
                 className="w-full mt-4 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-blue-500/25 transition-all"
               >
                 Proceed to NetBanking ({selectedBank})

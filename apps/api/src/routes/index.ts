@@ -74,8 +74,13 @@ const checkoutRouter = Router();
 checkoutRouter.post('/sessions', authenticateApiKey, enforceTenantIsolation, validateBody(CreateCheckoutSessionSchema), CheckoutController.createSession);
 // Public hosted checkout endpoints (No merchant auth required for customer payment page)
 checkoutRouter.get('/sessions/:sessionId', CheckoutController.getSession);
+checkoutRouter.post('/sessions/:sessionId/initiate', handleIdempotency, validateBody(InitiatePaymentSchema), CheckoutController.initiatePayment);
 checkoutRouter.post('/sessions/:sessionId/pay', handleIdempotency, validateBody(InitiatePaymentSchema), CheckoutController.processPayment);
+checkoutRouter.post('/sessions/:sessionId/simulate', CheckoutController.simulatePayment);
 router.use('/checkout', checkoutRouter);
+
+// Public sandbox provider callback route (simulates bank PSP webhook callbacks)
+router.post('/payments/:id/simulate-callback', PaymentController.simulateCallback);
 
 // ==========================================
 // 5. PAYMENT ROUTES
@@ -86,6 +91,7 @@ paymentRouter.post('/initiate', handleIdempotency, validateBody(InitiatePaymentS
 paymentRouter.get('/:id', PaymentController.getPayment);
 paymentRouter.get('/', PaymentController.listPayments);
 paymentRouter.post('/:id/refund', handleIdempotency, PaymentController.createRefund);
+paymentRouter.post('/:id/simulate-callback', PaymentController.simulateCallback);
 router.use('/payments', paymentRouter);
 
 // ==========================================

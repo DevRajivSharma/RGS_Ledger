@@ -283,6 +283,7 @@ export interface ICheckoutSession {
   _id: string;
   orderId: string;
   merchantId: string;
+  paymentId?: string;
   amount: number;
   currency: string;
   status: 'OPEN' | 'COMPLETED' | 'EXPIRED';
@@ -296,6 +297,7 @@ const CheckoutSessionSchema = new Schema<ICheckoutSession>({
   _id: { type: String, required: true },
   orderId: { type: String, required: true, index: true },
   merchantId: { type: String, required: true, index: true },
+  paymentId: { type: String, index: true },
   amount: { type: Number, required: true },
   currency: { type: String, default: 'INR' },
   status: { type: String, enum: ['OPEN', 'COMPLETED', 'EXPIRED'], default: 'OPEN', index: true },

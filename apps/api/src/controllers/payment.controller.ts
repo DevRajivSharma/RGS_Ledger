@@ -69,4 +69,27 @@ export class PaymentController {
       next(err);
     }
   }
+
+  static async simulateCallback(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const paymentId = req.params.id;
+      const status = (req.body.status as 'SUCCESS' | 'FAILED' | 'PENDING') || 'SUCCESS';
+      const resolved = await PaymentService.resolvePayment({
+        paymentId,
+        action: status,
+        errorCode: req.body.errorCode,
+        errorMessage: req.body.errorMessage
+      });
+
+      res.status(200).json({
+        success: true,
+        data: {
+          payment: resolved.payment,
+          order: resolved.order
+        }
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
 }

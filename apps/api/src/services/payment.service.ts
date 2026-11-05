@@ -15,7 +15,8 @@ import {
 import {
   SandboxPaymentProvider,
   PaymentStateMachine,
-  DoubleEntryLedger
+  DoubleEntryLedger,
+  GenericUPIIntentProvider
 } from '@rgs-ledger/payment-core';
 import { LedgerService } from './ledger.service';
 import { enqueueWebhook } from '../queues/webhook-queue';
@@ -23,7 +24,10 @@ import { enqueueWebhook } from '../queues/webhook-queue';
 export class PaymentService {
   private static sandboxProvider = new SandboxPaymentProvider();
 
-  static async initiatePayment(data: {
+  /**
+   * Phase 1: Creates a persistent payment attempt in PENDING state in MongoDB
+   */
+  static async createPaymentAttempt(data: {
     orderId: string;
     method: PaymentMethodType;
     upiId?: string;
@@ -36,7 +40,7 @@ export class PaymentService {
     };
     bankCode?: string;
     customerIp?: string;
-  }): Promise<{ payment: IPayment; order: IOrder; upiUri?: string }> {
+  }): Promise<{ payment: IPayment; order: IOrder; upiUri: string }> {
     const order = await Order.findById(data.orderId).exec();
     if (!order) {
       const err: any = new Error(`Order ${data.orderId} not found`);
@@ -59,8 +63,9 @@ export class PaymentService {
     await order.save();
 
     const paymentId = generateRandomId('pay');
+    const providerPaymentId = `sbx_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    // Create Initial Payment Record in PENDING state
+    // Create Initial Payment Record in PENDING state in MongoDB
     const payment = await Payment.create({
       _id: paymentId,
       orderId: order._id,
@@ -73,10 +78,20 @@ export class PaymentService {
       cardNetwork: data.cardDetails?.cardNumber?.startsWith('4') ? 'VISA' : (data.cardDetails ? 'MASTERCARD' : undefined),
       cardLast4: data.cardDetails?.cardNumber ? data.cardDetails.cardNumber.slice(-4) : undefined,
       bankCode: data.bankCode,
+      providerPaymentId,
       environment: order.environment || EnvironmentMode.SANDBOX
     });
 
-    // Enqueue payment.created webhook
+    // Generate UPI Intent URI pointing to this exact payment attempt
+    const upiUri = GenericUPIIntentProvider.generateIntentUri({
+      payeeVpa: 'sandbox-merchant@rgsbank',
+      payeeName: 'Sandbox Merchant',
+      transactionRef: String(payment._id),
+      amountPaise: payment.amount,
+      currency: payment.currency
+    });
+
+    // Enqueue payment.created webhook event
     enqueueWebhook({
       merchantId: order.merchantId,
       event: 'payment.created',
@@ -90,22 +105,55 @@ export class PaymentService {
       }
     });
 
-    // Execute through Payment Provider Adapter (Sandbox Provider)
-    const providerResponse = await this.sandboxProvider.initiatePayment({
-      paymentId: String(payment._id),
-      orderId: String(order._id),
-      amount: order.amount,
-      currency: order.currency,
-      method: data.method,
-      upiId: data.upiId,
-      cardDetails: data.cardDetails,
-      bankCode: data.bankCode,
-      customerIp: data.customerIp
-    });
+    return {
+      payment,
+      order,
+      upiUri
+    };
+  }
 
-    payment.providerPaymentId = providerResponse.providerPaymentId;
+  /**
+   * Phase 2: Resolves an existing PENDING payment to SUCCESS, FAILED, or retains PENDING
+   */
+  static async resolvePayment(data: {
+    paymentId: string;
+    action: 'SUCCESS' | 'FAILED' | 'PENDING';
+    errorCode?: string;
+    errorMessage?: string;
+  }): Promise<{ payment: IPayment; order: IOrder }> {
+    const payment = await Payment.findById(data.paymentId).exec();
+    if (!payment) {
+      const err: any = new Error(`Payment ${data.paymentId} not found`);
+      err.status = 404;
+      err.code = 'PAYMENT_NOT_FOUND';
+      throw err;
+    }
 
-    if (providerResponse.status === PaymentStatus.SUCCESS) {
+    const order = await Order.findById(payment.orderId).exec();
+    if (!order) {
+      const err: any = new Error(`Order ${payment.orderId} not found`);
+      err.status = 404;
+      err.code = 'ORDER_NOT_FOUND';
+      throw err;
+    }
+
+    // Idempotency: If payment is already in SUCCESS, return existing record without duplicate ledger captures
+    if (payment.status === PaymentStatus.SUCCESS) {
+      if (data.action === 'SUCCESS') {
+        return { payment, order };
+      }
+      const err: any = new Error('Cannot change status of an already captured payment.');
+      err.status = 400;
+      err.code = 'PAYMENT_ALREADY_SUCCESS';
+      throw err;
+    }
+
+    // Idempotency: If payment is already FAILED
+    if (payment.status === PaymentStatus.FAILED && data.action === 'FAILED') {
+      return { payment, order };
+    }
+
+    if (data.action === 'SUCCESS') {
       PaymentStateMachine.assertPaymentTransition(payment.status, PaymentStatus.SUCCESS);
       payment.status = PaymentStatus.SUCCESS;
       payment.capturedAt = new Date();
@@ -152,10 +200,11 @@ export class PaymentService {
           capturedAt: payment.capturedAt
         }
       });
-    } else if (providerResponse.status === PaymentStatus.FAILED) {
+    } else if (data.action === 'FAILED') {
+      PaymentStateMachine.assertPaymentTransition(payment.status, PaymentStatus.FAILED);
       payment.status = PaymentStatus.FAILED;
-      payment.errorCode = providerResponse.errorCode || 'PAYMENT_FAILED';
-      payment.errorDescription = providerResponse.errorMessage || 'Transaction could not be completed';
+      payment.errorCode = data.errorCode || 'PAYMENT_FAILED_USER_DECLINED';
+      payment.errorDescription = data.errorMessage || 'Transaction declined by user in UPI App (Simulated Sandbox)';
       await payment.save();
 
       order.status = OrderStatus.FAILED;
@@ -165,23 +214,88 @@ export class PaymentService {
         merchantId: order.merchantId,
         event: 'payment.failed',
         payload: {
-          paymentId: payment._id,
-          orderId: order._id,
+          paymentId: String(payment._id),
+          orderId: String(order._id),
           errorCode: payment.errorCode,
           errorDescription: payment.errorDescription
         }
       });
     } else {
-      // Pending state for asynchronous UPI App approval
+      // Retain in PENDING status
       payment.status = PaymentStatus.PENDING;
       await payment.save();
     }
 
-    return {
-      payment,
-      order,
-      upiUri: providerResponse.upiUri
+    return { payment, order };
+  }
+
+  /**
+   * Unified initiatePayment: Initiates attempt and executes simulated provider outcome
+   */
+  static async initiatePayment(data: {
+    orderId: string;
+    method: PaymentMethodType;
+    upiId?: string;
+    cardDetails?: {
+      cardNumber: string;
+      expMonth: number;
+      expYear: number;
+      cvv: string;
+      holderName: string;
     };
+    bankCode?: string;
+    customerIp?: string;
+  }): Promise<{ payment: IPayment; order: IOrder; upiUri?: string }> {
+    // 1. Create persistent PENDING payment attempt in MongoDB
+    const attempt = await this.createPaymentAttempt(data);
+
+    // 2. Determine sandbox provider outcome
+    const providerResponse = await this.sandboxProvider.initiatePayment({
+      paymentId: String(attempt.payment._id),
+      orderId: String(attempt.order._id),
+      amount: attempt.order.amount,
+      currency: attempt.order.currency,
+      method: data.method,
+      upiId: data.upiId,
+      cardDetails: data.cardDetails,
+      bankCode: data.bankCode,
+      customerIp: data.customerIp
+    });
+
+    attempt.payment.providerPaymentId = providerResponse.providerPaymentId;
+    await Payment.findByIdAndUpdate(attempt.payment._id, { providerPaymentId: providerResponse.providerPaymentId }).exec();
+
+    // 3. Resolve according to provider status
+    if (providerResponse.status === PaymentStatus.SUCCESS) {
+      const resolved = await this.resolvePayment({
+        paymentId: String(attempt.payment._id),
+        action: 'SUCCESS'
+      });
+      return {
+        payment: resolved.payment,
+        order: resolved.order,
+        upiUri: providerResponse.upiUri || attempt.upiUri
+      };
+    } else if (providerResponse.status === PaymentStatus.FAILED) {
+      const resolved = await this.resolvePayment({
+        paymentId: String(attempt.payment._id),
+        action: 'FAILED',
+        errorCode: providerResponse.errorCode,
+        errorMessage: providerResponse.errorMessage
+      });
+      return {
+        payment: resolved.payment,
+        order: resolved.order,
+        upiUri: providerResponse.upiUri || attempt.upiUri
+      };
+    } else {
+      // Pending
+      return {
+        payment: attempt.payment,
+        order: attempt.order,
+        upiUri: providerResponse.upiUri || attempt.upiUri
+      };
+    }
   }
 
   static async getPayment(paymentId: string, merchantId?: string): Promise<IPayment> {

@@ -1,13 +1,16 @@
 import {
   Order,
   Merchant,
+  Payment,
   CheckoutSession,
   ICheckoutSession
 } from '../database/models';
 import {
-  generateRandomId
+  generateRandomId,
+  PaymentMethodType
 } from '@rgs-ledger/shared';
 import { GenericUPIIntentProvider } from '@rgs-ledger/payment-core';
+import { PaymentService } from './payment.service';
 import { config } from '../config';
 
 export class CheckoutService {
@@ -59,16 +62,25 @@ export class CheckoutService {
       await session.save();
     }
 
+    let existingPayment = session.paymentId ? await Payment.findById(session.paymentId).exec() : null;
+    if (!existingPayment) {
+      existingPayment = await Payment.findOne({ orderId: session.orderId, status: { $in: ['PENDING', 'SUCCESS'] } }).sort({ createdAt: -1 }).exec();
+      if (existingPayment) {
+        session.paymentId = existingPayment._id;
+        await session.save();
+      }
+    }
+
     const [order, merchant] = await Promise.all([
       Order.findById(session.orderId).exec(),
       Merchant.findById(session.merchantId).exec()
     ]);
 
-    // Generate UPI Intent URI for QR and App Launch
+    // Generate UPI Intent URI for QR and App Launch referencing payment ID if created
     const upiUri = GenericUPIIntentProvider.generateIntentUri({
       payeeVpa: 'sandbox-merchant@rgsbank',
       payeeName: merchant?.businessName || 'RGS Merchant',
-      transactionRef: session._id,
+      transactionRef: existingPayment ? String(existingPayment._id) : session._id,
       amountPaise: session.amount,
       currency: session.currency
     });
@@ -78,6 +90,7 @@ export class CheckoutService {
         id: String(session._id),
         orderId: String(session.orderId),
         merchantId: String(session.merchantId),
+        paymentId: session.paymentId ? String(session.paymentId) : undefined,
         amount: session.amount,
         currency: session.currency,
         status: session.status,
@@ -86,6 +99,16 @@ export class CheckoutService {
         expiresAt: session.expiresAt,
         upiUri
       },
+      payment: existingPayment ? {
+        id: String(existingPayment._id),
+        status: existingPayment.status,
+        method: existingPayment.method,
+        amount: existingPayment.amount,
+        currency: existingPayment.currency,
+        providerPaymentId: existingPayment.providerPaymentId,
+        errorCode: existingPayment.errorCode,
+        errorDescription: existingPayment.errorDescription
+      } : null,
       merchant: {
         id: merchant ? String(merchant._id) : undefined,
         businessName: merchant?.businessName || 'RGS Merchant',
@@ -95,8 +118,75 @@ export class CheckoutService {
         id: order ? String(order._id) : undefined,
         status: order?.status,
         receipt: order?.receipt,
-        customer: order?.customer
+        customer: order?.customer,
+        attemptsCount: order?.attemptsCount || 0
       }
+    };
+  }
+
+  static async initiatePayment(sessionId: string, data: {
+    method: PaymentMethodType;
+    upiId?: string;
+    cardDetails?: any;
+    bankCode?: string;
+    customerIp?: string;
+  }) {
+    const session = await CheckoutSession.findById(sessionId).exec();
+    if (!session) {
+      const err: any = new Error(`Checkout session ${sessionId} not found`);
+      err.status = 404;
+      err.code = 'SESSION_NOT_FOUND';
+      throw err;
+    }
+
+    if (session.status === 'EXPIRED' || new Date() > session.expiresAt) {
+      session.status = 'EXPIRED';
+      await session.save();
+      const err: any = new Error('Checkout session has expired.');
+      err.status = 400;
+      err.code = 'SESSION_EXPIRED';
+      throw err;
+    }
+
+    // Check if session already has a PENDING payment for this method
+    if (session.paymentId) {
+      const existingPayment = await Payment.findById(session.paymentId).exec();
+      if (existingPayment && existingPayment.status === 'PENDING' && existingPayment.method === data.method) {
+        const order = await Order.findById(session.orderId).exec();
+        const upiUri = GenericUPIIntentProvider.generateIntentUri({
+          payeeVpa: 'sandbox-merchant@rgsbank',
+          payeeName: 'Sandbox Merchant',
+          transactionRef: String(existingPayment._id),
+          amountPaise: existingPayment.amount,
+          currency: existingPayment.currency
+        });
+        return {
+          payment: existingPayment,
+          order: order!,
+          upiUri,
+          sessionId: session._id
+        };
+      }
+    }
+
+    // Create a new persistent payment attempt in PENDING state
+    const attempt = await PaymentService.createPaymentAttempt({
+      orderId: session.orderId,
+      method: data.method,
+      upiId: data.upiId,
+      cardDetails: data.cardDetails,
+      bankCode: data.bankCode,
+      customerIp: data.customerIp
+    });
+
+    session.paymentId = attempt.payment._id;
+    await session.save();
+
+    return {
+      payment: attempt.payment,
+      order: attempt.order,
+      upiUri: attempt.upiUri,
+      sessionId: session._id
     };
   }
 }

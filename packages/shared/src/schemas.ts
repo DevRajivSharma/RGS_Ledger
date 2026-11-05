@@ -72,7 +72,10 @@ export const CreateCheckoutSessionSchema = z.object({
 // Payment Initiation Schema
 export const InitiatePaymentSchema = z.object({
   orderId: z.string().min(1).optional(),
-  method: z.nativeEnum(PaymentMethodType),
+  paymentId: z.string().min(1).optional(),
+  action: z.enum(['SUCCESS', 'FAILED', 'PENDING']).optional(),
+  status: z.enum(['SUCCESS', 'FAILED', 'PENDING']).optional(),
+  method: z.nativeEnum(PaymentMethodType).optional().default(PaymentMethodType.UPI_QR),
   upiId: z.string().optional(),
   cardDetails: z.object({
     cardNumber: z.string().min(12).max(19),

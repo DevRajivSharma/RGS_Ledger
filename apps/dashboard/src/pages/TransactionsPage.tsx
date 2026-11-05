@@ -7,6 +7,7 @@ import {
   CheckCircle2,
   ExternalLink,
   BookOpen,
+  RefreshCw,
   X
 } from 'lucide-react';
 import { apiRequest } from '../services/api';
@@ -40,6 +41,8 @@ export const TransactionsPage: React.FC = () => {
 
   useEffect(() => {
     loadPayments();
+    const interval = setInterval(loadPayments, 8000);
+    return () => clearInterval(interval);
   }, [statusFilter]);
 
   const filteredPayments = payments.filter((p) => {
@@ -90,9 +93,17 @@ export const TransactionsPage: React.FC = () => {
         <div>
           <h2 className="text-2xl font-extrabold text-white tracking-tight">Transactions</h2>
           <p className="text-xs text-slate-400 mt-1">
-            Track, filter, and inspect payment attempts and ledger captures.
+            Track, filter, and inspect payment attempts and ledger captures in real-time.
           </p>
         </div>
+        <button
+          onClick={loadPayments}
+          disabled={loading}
+          className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold transition-all inline-flex items-center space-x-1.5"
+        >
+          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin text-blue-400' : 'text-slate-400'}`} />
+          <span>Refresh</span>
+        </button>
       </div>
 
       {/* Filter Bar */}
