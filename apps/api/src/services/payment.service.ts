@@ -3,13 +3,17 @@ import {
   Payment,
   Customer,
   IPayment,
-  IOrder
+  IOrder,
+  AuditLog
 } from '../database/models';
 import {
   PaymentStatus,
   OrderStatus,
   PaymentMethodType,
   EnvironmentMode,
+  ProviderType,
+  ManualVerificationStatus,
+  UserRole,
   generateRandomId
 } from '@rgs-ledger/shared';
 import {
@@ -20,6 +24,8 @@ import {
 } from '@rgs-ledger/payment-core';
 import { LedgerService } from './ledger.service';
 import { enqueueWebhook } from '../queues/webhook-queue';
+import { MerchantProviderService } from './merchant-provider.service';
+import { config } from '../config';
 
 export class PaymentService {
   private static sandboxProvider = new SandboxPaymentProvider();
@@ -144,24 +150,78 @@ export class PaymentService {
       await order.save();
 
       const paymentId = generateRandomId('pay');
-      const providerPaymentId = `sbx_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+      // Resolve merchant-specific provider based on method and environment
+      const { provider, providerType, account } = await MerchantProviderService.resolveProviderForPayment(
+        order.merchantId,
+        data.method,
+        order.environment || EnvironmentMode.SANDBOX
+      );
+
+      // Callback and redirect endpoints
+      const callbackUrl = `${config.apiUrl}/api/v1/callbacks/${providerType.toLowerCase()}`;
+      const redirectUrl = `${config.checkoutUrl}/checkout/${order._id}`;
+
+      let initResult: any = null;
+      try {
+        initResult = await provider.initiatePayment({
+          paymentId,
+          orderId: String(order._id),
+          merchantId: order.merchantId,
+          amount: order.amount,
+          currency: order.currency,
+          method: data.method,
+          upiId: data.upiId,
+          cardDetails: data.cardDetails,
+          bankCode: data.bankCode,
+          customerPhone: order.customer?.phone || '9999999999',
+          customerEmail: order.customer?.email,
+          customerName: order.customer?.name,
+          merchantVpa: account?.vpaConfig?.vpa,
+          merchantName: account?.vpaConfig?.displayName,
+          callbackUrl,
+          redirectUrl,
+          idempotencyKey: paymentId
+        });
+      } catch (provErr: any) {
+        // If provider rejected initiation
+        initResult = {
+          providerPaymentId: `err_${paymentId}`,
+          status: PaymentStatus.FAILED,
+          errorCode: provErr.code || 'PROVIDER_INITIATION_FAILED',
+          errorMessage: provErr.message
+        };
+      }
+
+      const providerPaymentId = initResult?.providerPaymentId || `sbx_pay_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const manualVerificationStatus = providerType === ProviderType.UPI_QR_MANUAL
+        ? ManualVerificationStatus.AWAITING_MANUAL_CONFIRMATION
+        : ManualVerificationStatus.NOT_APPLICABLE;
 
       let payment: IPayment;
       try {
-        // Create Initial Payment Record in PENDING state in MongoDB
+        // Create Initial Payment Record in PENDING (or FAILED if unconfigured) state in MongoDB
         payment = await Payment.create({
           _id: paymentId,
           orderId: order._id,
           merchantId: order.merchantId,
           amount: order.amount,
           currency: order.currency,
-          status: PaymentStatus.PENDING,
+          status: initResult?.status === PaymentStatus.FAILED ? PaymentStatus.FAILED : PaymentStatus.PENDING,
           method: data.method,
+          providerType,
+          providerPaymentId,
+          providerTransactionId: initResult?.providerTransactionId,
+          paymentUrl: initResult?.paymentUrl,
+          upiUri: initResult?.upiUri,
+          manualVerificationStatus,
+          rawProviderResponse: initResult?.rawResponse,
           upiId: data.upiId,
           cardNetwork: data.cardDetails?.cardNumber?.startsWith('4') ? 'VISA' : (data.cardDetails ? 'MASTERCARD' : undefined),
           cardLast4: data.cardDetails?.cardNumber ? data.cardDetails.cardNumber.slice(-4) : undefined,
           bankCode: data.bankCode,
-          providerPaymentId,
+          errorCode: initResult?.errorCode,
+          errorDescription: initResult?.errorMessage,
           environment: order.environment || EnvironmentMode.SANDBOX
         });
       } catch (createErr: any) {
@@ -172,9 +232,9 @@ export class PaymentService {
             status: PaymentStatus.PENDING
           }).exec();
           if (racePending) {
-            const upiUri = GenericUPIIntentProvider.generateIntentUri({
-              payeeVpa: 'sandbox-merchant@rgsbank',
-              payeeName: 'Sandbox Merchant',
+            const upiUri = racePending.upiUri || GenericUPIIntentProvider.generateIntentUri({
+              payeeVpa: account?.vpaConfig?.vpa || 'sandbox-merchant@rgsbank',
+              payeeName: account?.vpaConfig?.displayName || 'Sandbox Merchant',
               transactionRef: String(racePending._id),
               amountPaise: racePending.amount,
               currency: racePending.currency
@@ -182,21 +242,27 @@ export class PaymentService {
             return {
               payment: racePending,
               order,
-              upiUri
+              upiUri,
+              paymentUrl: racePending.paymentUrl
             };
           }
         }
         throw createErr;
       }
 
-      // Generate UPI Intent URI pointing to this exact payment attempt
-      const upiUri = GenericUPIIntentProvider.generateIntentUri({
-        payeeVpa: 'sandbox-merchant@rgsbank',
-        payeeName: 'Sandbox Merchant',
+      // Generate default UPI Intent URI if none returned by provider
+      const upiUri = initResult?.upiUri || GenericUPIIntentProvider.generateIntentUri({
+        payeeVpa: account?.vpaConfig?.vpa || 'sandbox-merchant@rgsbank',
+        payeeName: account?.vpaConfig?.displayName || 'Sandbox Merchant',
         transactionRef: String(payment._id),
         amountPaise: payment.amount,
         currency: payment.currency
       });
+
+      if (!payment.upiUri) {
+        payment.upiUri = upiUri;
+        await payment.save();
+      }
 
       // Enqueue payment.created webhook event
       enqueueWebhook({
@@ -215,7 +281,9 @@ export class PaymentService {
       return {
         payment,
         order,
-        upiUri
+        upiUri,
+        paymentUrl: payment.paymentUrl,
+        qrImage: initResult?.qrImage
       };
     } finally {
       this.initiationLocks.delete(data.orderId);
@@ -427,6 +495,140 @@ export class PaymentService {
         upiUri: providerResponse.upiUri || attempt.upiUri
       };
     }
+  }
+
+  /**
+   * Phase 4 & 5: Authoritatively confirms a raw UPI QR payment after independent UTR/bank verification.
+   * Prevents fraud by strictly prohibiting unverified auto-success on raw QR codes.
+   */
+  static async confirmManualPayment(params: {
+    paymentId: string;
+    utr: string;
+    verifiedBy: string;
+    notes?: string;
+  }): Promise<{ payment: IPayment; order: IOrder }> {
+    const payment = await Payment.findById(params.paymentId).exec();
+    if (!payment) {
+      const err: any = new Error(`Payment ${params.paymentId} not found`);
+      err.status = 404;
+      err.code = 'PAYMENT_NOT_FOUND';
+      throw err;
+    }
+
+    if (payment.status !== PaymentStatus.PENDING) {
+      const err: any = new Error(`Only PENDING payments can be manually confirmed. Current status: ${payment.status}`);
+      err.status = 400;
+      err.code = 'INVALID_PAYMENT_STATUS';
+      throw err;
+    }
+
+    if (payment.manualVerificationStatus !== ManualVerificationStatus.AWAITING_MANUAL_CONFIRMATION) {
+      const err: any = new Error(`Payment ${payment._id} is not awaiting manual confirmation.`);
+      err.status = 400;
+      err.code = 'NOT_AWAITING_MANUAL_CONFIRMATION';
+      throw err;
+    }
+
+    if (!params.utr || params.utr.trim().length < 6) {
+      const err: any = new Error('A valid Bank Transaction Reference / UTR (minimum 6 alphanumeric characters) is required for manual confirmation.');
+      err.status = 400;
+      err.code = 'INVALID_UTR';
+      throw err;
+    }
+
+    payment.manualVerificationStatus = ManualVerificationStatus.MANUAL_VERIFIED;
+    payment.manualVerificationDetails = {
+      verifiedBy: params.verifiedBy,
+      utr: params.utr.trim(),
+      verifiedAt: new Date(),
+      notes: params.notes
+    };
+    await payment.save();
+
+    // Authoritatively resolve payment to SUCCESS
+    const res = await this.resolvePayment({
+      paymentId: String(payment._id),
+      action: 'SUCCESS'
+    });
+
+    // Record audit trail
+    await AuditLog.create({
+      _id: generateRandomId('audit'),
+      actorId: params.verifiedBy,
+      actorEmail: params.verifiedBy,
+      actorRole: UserRole.FINANCE,
+      merchantId: payment.merchantId,
+      action: 'PAYMENT_MANUAL_CONFIRMED',
+      targetEntity: 'Payment',
+      targetId: String(payment._id),
+      changes: {
+        utr: params.utr.trim(),
+        verifiedBy: params.verifiedBy,
+        notes: params.notes
+      }
+    });
+
+    return res;
+  }
+
+  /**
+   * Phase 4: Independent Server-Side Payment Reconciliation via Provider Status API
+   */
+  static async reconcilePayment(paymentId: string): Promise<{ payment: IPayment; order: IOrder; reconciled: boolean }> {
+    const payment = await Payment.findById(paymentId).exec();
+    if (!payment) {
+      const err: any = new Error(`Payment ${paymentId} not found`);
+      err.status = 404;
+      err.code = 'PAYMENT_NOT_FOUND';
+      throw err;
+    }
+
+    const order = await Order.findById(payment.orderId).exec();
+    if (!order) {
+      const err: any = new Error(`Order ${payment.orderId} not found`);
+      err.status = 404;
+      err.code = 'ORDER_NOT_FOUND';
+      throw err;
+    }
+
+    if (payment.status !== PaymentStatus.PENDING) {
+      return { payment, order, reconciled: false };
+    }
+
+    const { provider } = await MerchantProviderService.resolveProviderForPayment(
+      payment.merchantId,
+      payment.method,
+      payment.environment
+    );
+
+    if (!provider.capabilities.supportsStatusCheck) {
+      return { payment, order, reconciled: false };
+    }
+
+    const statusResp = await provider.verifyPayment(
+      payment.providerPaymentId || String(payment._id),
+      payment.amount
+    );
+
+    if (statusResp.status === PaymentStatus.SUCCESS) {
+      const res = await this.resolvePayment({
+        paymentId: String(payment._id),
+        action: 'SUCCESS'
+      });
+      return { ...res, reconciled: true };
+    }
+
+    if (statusResp.status === PaymentStatus.FAILED) {
+      const res = await this.resolvePayment({
+        paymentId: String(payment._id),
+        action: 'FAILED',
+        errorCode: statusResp.errorCode,
+        errorMessage: statusResp.errorMessage
+      });
+      return { ...res, reconciled: true };
+    }
+
+    return { payment, order, reconciled: false };
   }
 
   static async getPayment(paymentId: string, merchantId?: string): Promise<IPayment> {
