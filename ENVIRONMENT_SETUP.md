@@ -1,268 +1,206 @@
-# RGS LEDGER — LOCAL ENVIRONMENT & CONFIGURATION GUIDE
+# RGS LEDGER — LOCAL & PRODUCTION ENVIRONMENT CONFIGURATION GUIDE
 
-**Document ID:** `RGS-ENV-2026-11-04`  
-**Platform:** RGS Ledger — Fintech Payment Gateway Platform  
-**Target Environment:** Local Development & Testing  
-**Security Classification:** Development Configuration Reference  
-
----
-
-## 1. Overview & Setup Philosophy
-
-RGS Ledger is architected to be fully functional out-of-the-box in local development with minimal external dependencies.
-- **Immediate Local Execution:** Requires only Node.js (v20+) and local MongoDB (v6.0+).
-- **Graceful Fallbacks:** If optional services like Redis or SMTP are not running locally, the platform automatically engages resilient in-memory queues and console logging rather than failing or crashing.
-- **Production Guardrails:** Production money movement and live banking rails remain disabled. Sandbox mode simulates deterministic payment outcomes (success, decline, pending, timeout) with full mathematical and ledger fidelity.
+**Document ID:** `RGS-ENV-2026-11-06`  
+**Platform:** RGS Ledger — Enterprise Fintech Payment Gateway Platform  
+**Target Audience:** DevOps Engineers, Platform Architects, Security Auditors, Merchants  
+**Security Classification:** Platform Architecture & Security Reference  
 
 ---
 
-## 2. Consolidated Environment Variable Directory
+## 1. Overview & Architectural Philosophy
 
-Below is the complete reference of all environment variables across all workspaces:
+RGS Ledger is an enterprise multi-tenant payment gateway platform built with a modular, provider-independent payment engine.
 
-| Variable Name | Category | Used By | Required? | Safe Local Default | Purpose |
-| :--- | :--- | :--- | :---: | :--- | :--- |
-| `NODE_ENV` | Runtime | API | Yes | `development` | Sets runtime environment (`development`, `test`, `production`). In production, strict security headers and cookie flags are enforced. |
-| `PAYMENT_ENVIRONMENT` | Gateway | API, Core | Yes | `SANDBOX` | Operating mode (`SANDBOX` vs `PRODUCTION`). Live money movement is locked unless all regulatory criteria are satisfied. |
-| `LOG_LEVEL` | Logging | API | Optional | `info` | Winston/Morgan logging verbosity (`debug`, `info`, `warn`, `error`). |
-| `API_PORT` | Local URLs | API | Yes | `4000` | Port on which Express REST API listens. |
-| `API_URL` | Local URLs | API | Yes | `http://localhost:4000` | Fully-qualified public or loopback URL of the REST API. |
-| `DASHBOARD_URL` | Local URLs | API | Yes | `http://localhost:5173` | Allowed CORS origin and redirect target for Merchant Dashboard. |
-| `CHECKOUT_URL` | Local URLs | API | Yes | `http://localhost:5174` | Allowed CORS origin and base target for Hosted Checkout sessions. |
-| `DEVELOPER_PORTAL_URL`| Local URLs | API | Yes | `http://localhost:5175` | Allowed CORS origin for Developer Portal. |
-| `ADMIN_URL` | Local URLs | API | Yes | `http://localhost:5176` | Allowed CORS origin for Super Admin Console. |
-| `VITE_API_URL` | Local URLs | Frontends | Yes | `http://localhost:4000/api/v1` | Base REST API URL used by Dashboard, Checkout, Admin, and Developer Portal frontends. |
-| `MONGODB_URI` | Database | API | **Yes** | `mongodb://localhost:27017/rgs_ledger` | Connection string for primary database (wiredTiger engine). |
-| `REDIS_URL` | Cache/Queue | API | Optional | `redis://localhost:6379` | Connection string for Redis BullMQ webhook retry queue. Falls back to in-memory queue if offline. |
-| `JWT_ACCESS_SECRET` | Security | API | **Yes** | `rgs_dev_access_secret_min_32_chars_ok` | Secret key for signing 15-minute access JWTs. |
-| `JWT_REFRESH_SECRET` | Security | API | **Yes** | `rgs_dev_refresh_secret_min_32_chars_ok` | Secret key for signing 7-day refresh JWTs. |
-| `JWT_ACCESS_EXPIRES_IN`| Security | API | Optional | `15m` | Lifetime duration of access tokens. |
-| `JWT_REFRESH_EXPIRES_IN`| Security | API | Optional | `7d` | Lifetime duration of refresh tokens. |
-| `COOKIE_SECRET` | Security | API | **Yes** | `rgs_dev_cookie_secret_min_32_chars_ok` | Cookie signing secret for session cookies. |
-| `ENCRYPTION_KEY` | Security | API | **Yes** | `0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef` | 256-bit AES-GCM encryption key for securing merchant settlement bank accounts at rest. |
-| `WEBHOOK_SIGNING_SECRET`| Security | API, Shared | **Yes** | `whsec_dev_signing_secret_change_in_production` | Default HMAC-SHA256 signing secret for system webhook dispatches. |
-| `DEFAULT_CURRENCY` | Gateway | API, Shared | Optional | `INR` | Default 3-letter ISO currency code. |
-| `STORAGE_PROVIDER` | Storage | API | Optional | `local` | Document upload backend (`local`, `s3`, `gcs`). |
-| `STORAGE_BUCKET` | Storage | API | Optional | `rgs-ledger-documents` | Bucket name if using S3/GCS. |
-| `LOCAL_UPLOAD_DIR` | Storage | API | Optional | `./uploads` | Filesystem path for KYC identity documents when `STORAGE_PROVIDER=local`. |
-| `SMTP_HOST` | Email | API | Optional | `localhost` | Mail server hostname (e.g. MailHog, Mailpit, AWS SES). |
-| `SMTP_PORT` | Email | API | Optional | `1025` | Mail server port. |
-| `SMTP_USER` | Email | API | Optional | `""` | SMTP authentication username. |
-| `SMTP_PASSWORD` | Email | API | Optional | `""` | SMTP authentication password. |
-| `EMAIL_FROM` | Email | API | Optional | `no-reply@rgsledger.com` | "From" sender address on notifications. |
-| `NOTIFICATIONS_ENABLED`| Email | API | Optional | `true` | Toggle for transactional email dispatches. |
-| `PROVIDER_BASE_URL` | Provider | Core, API | Optional | `https://api.partner-bank.example.com` | Upstream acquiring bank API endpoint (mocked in Sandbox). |
-| `PROVIDER_PUBLIC_KEY` | Provider | Core, API | Optional | `pub_test_mock_gateway_key` | Acquirer partner public credential. |
-| `PROVIDER_SECRET_KEY` | Provider | Core, API | Optional | `sec_test_mock_gateway_secret` | Acquirer partner secret credential. |
+### Core Operating Tenets:
+1. **Multi-Merchant Isolation:** Platform-level environment variables configure infrastructure (MongoDB, Redis, JWT signing keys, master AES-256-GCM encryption key, public callback endpoints). Individual merchant provider accounts (PhonePe MIDs, Paytm credentials, merchant-specific VPAs) are stored **AES-256-GCM encrypted** at rest in MongoDB.
+2. **Provider Independence:** Core ledger and state machine logic are agnostic of upstream PSPs. RGS Ledger supports PhonePe Business, Paytm Business, Raw UPI QR, and future authorized Card/Netbanking acquirers via unified `IPaymentProvider` interfaces.
+3. **Financial Safety & Authoritative Confirmation:** Simulating an action or scanning a QR is NEVER proof of funds. Payments transition to `SUCCESS` only via cryptographically verified callbacks (`x-verify`, checksum) followed by authoritative status API inquiry (`expectedAmount` matching in integer paise), or via audited manual UTR reconciliation for raw QR codes.
+4. **Automated Validation Tooling:** A dedicated CLI validation command (`npm run validate:env`) verifies environment variable presence, cryptographic key lengths, and flags insecure development secrets when switching to `LIVE` mode.
 
 ---
 
-## 3. Categorized Variable Breakdown
+## 2. Mandatory vs. Optional Variables Directory
 
-### 3.1 Local Development URLs
-- Used for intra-service communication, CORS configuration, and webhook redirect generation.
-- **Local Defaults:**
-  - `API_URL`: `http://localhost:4000`
-  - `DASHBOARD_URL`: `http://localhost:5173`
-  - `CHECKOUT_URL`: `http://localhost:5174`
-  - `DEVELOPER_PORTAL_URL`: `http://localhost:5175`
-  - `ADMIN_URL`: `http://localhost:5176`
-  - `VITE_API_URL`: `http://localhost:4000/api/v1`
+### Mandatory Variables (Application Will Not Boot Without These in Production)
 
-### 3.2 MongoDB Configuration
-- **Variable:** `MONGODB_URI`
-- **Default:** `mongodb://localhost:27017/rgs_ledger`
-- **Requirement:** **Mandatory**. MongoDB must be running. WiredTiger storage engine handles schema models, transactions, orders, and append-only ledger entries.
+| Variable Name | Category | Scope | Format / Constraints | Production Requirement | Purpose |
+| :--- | :--- | :--- | :--- | :--- | :--- |
+| `NODE_ENV` | Runtime | Platform | `production` \| `development` \| `test` | `production` | Enforces production security headers, TLS cookie flags, and strict error masking. |
+| `PAYMENT_ENVIRONMENT` | Gateway | Platform | `SANDBOX` \| `LIVE` | `LIVE` | Global gateway mode. When `LIVE`, real money flows through configured providers; sandbox fallbacks are strictly blocked. |
+| `API_URL` | Networking | Platform | Full URL (`https://...`) | Public HTTPS domain | Base REST API endpoint for system callbacks and inter-service routing. |
+| `CHECKOUT_URL` | Networking | Platform | Full URL (`https://...`) | Public HTTPS domain | Hosted Checkout customer UI base URL. |
+| `DASHBOARD_URL` | Networking | Platform | Full URL (`https://...`) | Public HTTPS domain | Merchant Dashboard CORS origin and redirect base. |
+| `MONGODB_URI` | Database | Platform | MongoDB Connection URI | Auth-enabled replica set / Atlas URI | Primary database connection string (MongoDB 6.0+ with WiredTiger). |
+| `REDIS_URL` | Queue/Cache| Platform | Redis Connection URI | High-availability Redis instance | Backs BullMQ persistent queues for webhook delivery and background reconciliation. |
+| `ENCRYPTION_KEY` | Cryptography| Platform | **Exactly 64 hex characters (32 bytes)** | Cryptographically random hex string | Master AES-256-GCM key used to encrypt merchant provider credentials at rest. |
+| `JWT_ACCESS_SECRET` | Auth | Platform | String (>= 32 chars) | High-entropy random secret | Signs 15-minute merchant and admin access tokens. |
+| `JWT_REFRESH_SECRET` | Auth | Platform | String (>= 32 chars) | High-entropy random secret (different from access) | Signs 7-day merchant refresh tokens. |
+| `COOKIE_SECRET` | Auth | Platform | String (>= 32 chars) | High-entropy random secret | Cookie session signature secret. |
+| `WEBHOOK_SIGNING_SECRET`| Auth | Platform | String (>= 24 chars) | High-entropy random secret | System webhook signature key for platform notifications. |
 
-### 3.3 Redis Configuration & BullMQ Status
-- **Variable:** `REDIS_URL`
-- **Default:** `redis://localhost:6379`
-- **Current Runtime State:** Redis is currently **OFFLINE** on the local Windows host.
-- **Application Resilience:** `apps/api/src/queues/webhook-queue.ts` detects Redis availability via an asynchronous handshake (`lazyConnect`).
-  - *When Redis is online:* BullMQ initializes full distributed queues (`Queue`, `Worker`) with exponential backoff and retry persistence.
-  - *When Redis is offline:* The application automatically logs:
-    ```
-    [Queue] Redis offline. Operating in resilient In-Memory webhook queue mode.
-    ```
-    and processes outbound webhooks via asynchronous `setImmediate()` in-memory queues without crashing the API or blocking payment journeys.
-- **To Start Redis (Optional):**
-  If you have Docker running, launch an ephemeral Redis instance:
-  ```powershell
-  docker run -d --name rgs-redis -p 6379:6379 redis:7-alpine
-  ```
+### Optional Platform Fallbacks & Auxiliaries
 
-### 3.4 Authentication & Cryptographic Secrets
-All secrets require 256-bit entropy in production. Safe local defaults are pre-configured:
-- `JWT_ACCESS_SECRET`: `rgs_dev_access_secret_change_in_production_min_32_chars`
-- `JWT_REFRESH_SECRET`: `rgs_dev_refresh_secret_change_in_production_min_32_chars`
-- `COOKIE_SECRET`: `rgs_dev_cookie_secret_change_in_production_min_32_chars`
-- `ENCRYPTION_KEY`: `0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef` (64 hex characters)
-- `WEBHOOK_SIGNING_SECRET`: `whsec_dev_signing_secret_change_in_production`
-
-### 3.5 Email / Transactional Notifications
-- If `SMTP_HOST` is unreachable, transactional alerts are caught gracefully and logged to console.
-- For local testing with a visual inbox, run **Mailpit** or **MailHog** on port 1025.
-
-### 3.6 File Storage Configuration
-- Defaults to `STORAGE_PROVIDER=local` with files saved in `./uploads`.
-- S3 or Google Cloud Storage configurations are only needed in staging/production.
-
-### 3.7 Payment Provider Configuration
-- `PROVIDER_BASE_URL`, `PROVIDER_PUBLIC_KEY`, `PROVIDER_SECRET_KEY`:
-- Points to sandbox adapter. **Do not fabricate external bank credentials.** The local sandbox provider handles test payments without upstream calls.
-
-### 3.8 Production Deployment URLs (Future)
-When deploying to cloud infrastructure, replace `localhost` URLs with your validated domain endpoints:
-- `API_URL`: `https://api.yourdomain.com`
-- `DASHBOARD_URL`: `https://dashboard.yourdomain.com`
-- `CHECKOUT_URL`: `https://checkout.yourdomain.com`
-- `DEVELOPER_PORTAL_URL`: `https://docs.yourdomain.com`
-- `ADMIN_URL`: `https://admin.yourdomain.com`
+| Variable Name | Category | Scope | Safe Sandbox Default | Production Behavior |
+| :--- | :--- | :--- | :--- | :--- |
+| `API_PORT` | Networking | Platform | `4000` | Port assigned by container orchestrator (e.g. AWS ECS / K8s). |
+| `DEVELOPER_PORTAL_URL`| Networking | Platform | `http://localhost:5175` | Public docs and developer portal URL. |
+| `ADMIN_URL` | Networking | Platform | `http://localhost:5176` | Super Admin console URL. |
+| `DEFAULT_CURRENCY` | Financial | Platform | `INR` | ISO 4217 currency code. Amounts stored in minor units (paise). |
+| `PHONEPE_MERCHANT_ID` | PhonePe | Fallback | Empty / Optional | Platform fallback PhonePe Merchant ID for platform sandbox. |
+| `PHONEPE_SALT_KEY` | PhonePe | Fallback | Empty / Optional | Platform fallback PhonePe Salt Key. |
+| `PHONEPE_SALT_INDEX` | PhonePe | Fallback | `1` | Platform fallback Salt Index. |
+| `PAYTM_MERCHANT_ID` | Paytm | Fallback | Empty / Optional | Platform fallback Paytm Merchant ID. |
+| `PAYTM_MERCHANT_KEY` | Paytm | Fallback | Empty / Optional | Platform fallback Paytm Merchant Key. |
+| `DEFAULT_MERCHANT_VPA`| Raw UPI QR | Fallback | Empty / Optional | Fallback VPA for raw QR simulation. |
 
 ---
 
-## 4. Secret & Git Security Audit
+## 3. How to Generate Cryptographically Secure Secrets
 
-1. **Git Exclusion Confirmed:**
-   `.gitignore` has been updated and strictly excludes all `.env` files while preserving example templates:
-   ```gitignore
-   .env
-   .env.*
-   !.env.example
-   !.env.template
-   ```
-   Verified via `git check-ignore -v .env .env.local .env.production .env.test`.
-2. **Repository Secret Scan Confirmed:**
-   Full cryptographic regex scan performed across all 160 tracked files and entire Git commit history. **Zero AWS, Google, Stripe, Razorpay, or database passwords exist in the repository.**
+Never use dictionary words, predictable strings, or placeholders (`replace_with_...`) in production.
 
----
-
-## 5. Step-by-Step Local Setup Instructions
-
-### Step 1: Create the Root `.env` File
-In the project root `D:\Coding\project\RGS_PAY\.env`, copy the contents from `.env.example`:
+### Using OpenSSL (CLI)
 
 ```bash
-# Windows PowerShell
-Copy-Item .env.example .env
+# 1. Master AES-256-GCM Encryption Key (Required: Exactly 64 Hexadecimal Characters / 32 Bytes)
+openssl rand -hex 32
+
+# 2. JWT Access Secret (High entropy, minimum 32 characters)
+openssl rand -base64 32
+
+# 3. JWT Refresh Secret (High entropy, distinct from Access Secret)
+openssl rand -base64 32
+
+# 4. Cookie Secret (Minimum 32 characters)
+openssl rand -base64 32
+
+# 5. Webhook Signing Secret (Minimum 24 characters)
+openssl rand -hex 24
 ```
 
-The resulting file contents:
-```ini
-NODE_ENV=development
-PAYMENT_ENVIRONMENT=SANDBOX
-LOG_LEVEL=info
+### Using Node.js (Built-in Crypto)
 
-API_PORT=4000
-API_URL=http://localhost:4000
-DASHBOARD_URL=http://localhost:5173
-CHECKOUT_URL=http://localhost:5174
-DEVELOPER_PORTAL_URL=http://localhost:5175
-ADMIN_URL=http://localhost:5176
+```bash
+# Generate 64-hex character encryption key:
+node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
-MONGODB_URI=mongodb://localhost:27017/rgs_ledger
-REDIS_URL=redis://localhost:6379
-
-JWT_ACCESS_SECRET=rgs_dev_access_secret_change_in_production_min_32_chars
-JWT_REFRESH_SECRET=rgs_dev_refresh_secret_change_in_production_min_32_chars
-JWT_ACCESS_EXPIRES_IN=15m
-JWT_REFRESH_EXPIRES_IN=7d
-ENCRYPTION_KEY=0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
-COOKIE_SECRET=rgs_dev_cookie_secret_change_in_production_min_32_chars
-WEBHOOK_SIGNING_SECRET=whsec_dev_signing_secret_change_in_production
-
-STORAGE_PROVIDER=local
-STORAGE_BUCKET=rgs-ledger-documents
-LOCAL_UPLOAD_DIR=./uploads
-
-DEFAULT_CURRENCY=INR
-
-SMTP_HOST=localhost
-SMTP_PORT=1025
-SMTP_USER=
-SMTP_PASSWORD=
-EMAIL_FROM=no-reply@rgsledger.com
-NOTIFICATIONS_ENABLED=true
-
-PROVIDER_BASE_URL=https://api.partner-bank.example.com
-PROVIDER_PUBLIC_KEY=pub_test_mock_gateway_key
-PROVIDER_SECRET_KEY=sec_test_mock_gateway_secret
-```
-
-### Step 2: (Optional) Create Frontend `.env` Files
-Each frontend application has safe built-in fallbacks to `http://localhost:4000/api/v1`. If you wish to override the API target, create `.env` in any frontend directory:
-
-- `apps/dashboard/.env`
-- `apps/checkout/.env`
-- `apps/admin/.env`
-- `apps/developer-portal/.env`
-
-Contents for each:
-```ini
-VITE_API_URL=http://localhost:4000/api/v1
+# Generate 32-character random secret:
+node -e "console.log(require('crypto').randomBytes(24).toString('base64'))"
 ```
 
 ---
 
-## 6. External Accounts & Future Credentials Checklist
+## 4. How to Configure Sandbox Credentials
 
-| Category | Immediate Local Development | Future Production Requirements |
-| :--- | :--- | :--- |
-| **Database** | Local MongoDB (`127.0.0.1:27017`) | MongoDB Atlas cluster or managed MongoDB instance with replication and daily backups. |
-| **Cache & Queues** | In-Memory fallback (or local Docker Redis) | Managed Redis (Upstash, AWS ElastiCache, or Redis Enterprise). |
-| **Payment Acquirer** | Simulated Sandbox Provider (`GenericUPIIntentProvider`) | Authorized Acquiring Bank / Payment Aggregator partnership agreement & production API credentials. |
-| **Regulatory Authorization**| Sandbox operation (no license required) | RBI In-Principle PA authorization (India) or partnering with a licensed sponsor bank. |
-| **Domain & DNS** | `localhost` | Production domains with SSL/TLS certificates and Wildcard DNS. |
-| **Email Service** | Local console logging / mock | SendGrid, Postmark, Resend, or AWS SES with verified SPF, DKIM, and DMARC DNS records. |
-| **File Storage** | Local directory (`./uploads`) | AWS S3 Bucket or Google Cloud Storage with strict IAM bucket policies. |
+For local development and testing, sandbox mode allows end-to-end payment simulations without live bank accounts:
+
+1. **Create Local `.env` File:**
+   ```bash
+   cp .env.example .env
+   ```
+2. **Set Sandbox Mode:**
+   ```dotenv
+   NODE_ENV=development
+   PAYMENT_ENVIRONMENT=SANDBOX
+   ```
+3. **Configure Local Services:**
+   - Start MongoDB: `mongod --dbpath <data_dir>` or Docker container on port `27017`.
+   - Start Redis: `redis-server` or Docker container on port `6379`.
+4. **Platform Sandbox Provider (Optional Fallbacks):**
+   - For simulated UPI checkout testing, leave provider keys empty to use the built-in RGS Ledger sandbox provider.
+   - For PhonePe UAT sandbox testing, use PhonePe's official test credentials:
+     - `PHONEPE_MERCHANT_ID=PGTESTPAYUAT`
+     - `PHONEPE_SALT_KEY=099eb0cd-02cf-4e2a-8aca-3e6c6aff0399`
+     - `PHONEPE_SALT_INDEX=1`
+     - `PHONEPE_ENV=sandbox`
+5. **Verify Local Configuration:**
+   ```bash
+   npm run validate:env
+   ```
+   The validator will confirm that development settings are valid for sandbox operation.
 
 ---
 
-## 7. Service Startup & Verification Commands
+## 5. How to Configure Production Credentials Securely
 
-### 1. Ensure MongoDB is Running
-```powershell
-mongod --dbpath "D:\Coding\project\RGS_PAY\.data\db" --port 27017 --bind_ip 127.0.0.1
+In a live production fintech environment:
+
+### Step 1: Enforce Production Mode
+```dotenv
+NODE_ENV=production
+PAYMENT_ENVIRONMENT=LIVE
 ```
 
-### 2. Seed Initial Test Data
-Initializes default Super Admin, Demo Merchant, test API keys, orders, and ledger entries:
-```powershell
-npm run seed
-```
-- **Super Admin Credentials:** `admin@rgsledger.com` / `Admin@RGS1234!`
-- **Demo Merchant Credentials:** `merchant@acmestore.in` / `Merchant@12345!`
-- **Test Public Key:** `rl_test_pk_acme_store_demo_key_99`
-- **Test Secret Key:** `rl_test_sk_acme_store_demo_secret_99`
+### Step 2: Zero-Trust Secret Injection
+- **Never commit `.env` or production credentials to Git.**
+- Inject secrets into container environments dynamically at runtime using an enterprise secret vault:
+  - **AWS Systems Manager Parameter Store / AWS Secrets Manager**
+  - **HashiCorp Vault**
+  - **Google Cloud Secret Manager**
+  - **Kubernetes SealedSecrets / External Secrets Operator**
 
-### 3. Run the Automated E2E Verification Suite
-Verifies all 18 infrastructure, auth, payment, ledger, and security checks:
-```powershell
-npx tsx scripts/verify-e2e-audit.ts
+### Step 3: Configure Public HTTPS Domains
+In `LIVE` mode, the platform refuses to boot if service URLs point to `localhost` or `127.0.0.1`:
+```dotenv
+API_URL=https://api.rgsledger.com
+CHECKOUT_URL=https://checkout.rgsledger.com
+DASHBOARD_URL=https://dashboard.rgsledger.com
 ```
 
-### 4. Start Application Workspaces
-You can start applications individually or simultaneously:
+### Step 4: Merchant-Specific Live Provider Configuration
+Because RGS Ledger is multi-tenant:
+- Individual merchants configure their own PhonePe or Paytm production credentials through the Merchant Dashboard (**Settings -> Payment Providers**) or via API (`POST /api/v1/merchant/providers`).
+- Credentials are encrypted on ingestion via `ENCRYPTION_KEY` using AES-256-GCM.
+- Platform fallbacks in `.env` should remain unconfigured or restricted to platform-level acquiring.
 
-| Application | Command | Access URL |
-| :--- | :--- | :--- |
-| **Backend REST API** | `npm run dev:api` | `http://localhost:4000` |
-| **Merchant Dashboard** | `npm run dev:dashboard` | `http://localhost:5173` |
-| **Hosted Checkout** | `npm run dev:checkout` | `http://localhost:5174` |
-| **Developer Portal** | `npm run dev:portal` | `http://localhost:5175` |
-| **Super Admin Console**| `npm run dev:admin` | `http://localhost:5176` |
-| **All Frontends Together** | `npm run dev:frontends` | Ports 5173 – 5176 |
+---
 
-### 5. Verify API Health
-```powershell
-curl http://localhost:4000/health
+## 6. Master Encryption Key Rotation Procedure
+
+The master `ENCRYPTION_KEY` encrypts merchant provider credentials at rest. When compliance or security policy requires key rotation, execute the following dual-key rotation procedure:
+
+```mermaid
+flowchart TD
+    A["1. Generate New 64-Hex Key<br/>(ENCRYPTION_KEY_NEW)"] --> B["2. Deploy Application with Dual-Key Configuration"]
+    B --> C["3. Execute Atomic Re-Encryption Script<br/>(Read Old Key, Write New Key)"]
+    C --> D["4. Verify All Credentials Decrypt with New Key"]
+    D --> E["5. Promote ENCRYPTION_KEY_NEW to ENCRYPTION_KEY"]
+    E --> F["6. Securely Decommission Old Key in Vault"]
 ```
-Expected output:
-```json
-{
-  "status": "UP",
-  "environment": "SANDBOX",
-  "database": "CONNECTED",
-  "uptime": 12.34
-}
+
+### Step-by-Step Rotation Process:
+1. **Generate New 256-bit Key:**
+   ```bash
+   openssl rand -hex 32
+   ```
+2. **Dual-Key Staging:**
+   Set `ENCRYPTION_KEY_OLD` (current key) and `ENCRYPTION_KEY_NEW` (new key) in your secrets manager.
+3. **Run Re-encryption Migration:**
+   Execute the migration script:
+   - Queries all `MerchantProviderAccount` documents.
+   - Decrypts `credentialsEncrypted` using `ENCRYPTION_KEY_OLD`.
+   - Re-encrypts credentials using `ENCRYPTION_KEY_NEW`.
+   - Atomically updates documents and records `lastRotatedAt: new Date()`.
+4. **Promote New Key:**
+   Set `ENCRYPTION_KEY=<new_key>` and remove the old key from the runtime environment.
+5. **Audit:**
+   Check `AuditLog` records for `KEY_ROTATION_COMPLETED` entries.
+
+---
+
+## 7. Configuration Validation Command
+
+Run the configuration validator at any time:
+
+```bash
+npm run validate:env
 ```
+
+The validator verifies:
+- Format and reachability of MongoDB and Redis connection URIs.
+- Strict 64-hex character requirement for `ENCRYPTION_KEY`.
+- Minimum entropy thresholds (>= 32 chars) for JWT and cookie secrets.
+- In `LIVE` mode:
+  - Fails if any development default or placeholder string is detected.
+  - Fails if sandbox provider credentials (`PGTESTPAYUAT`, `STAGE_MID...`) are present.
+  - Fails if service URLs point to `localhost`.

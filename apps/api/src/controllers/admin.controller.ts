@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Merchant, User, AuditLog, ProviderConfig } from '../database/models';
+import { Merchant, User, AuditLog, ProviderConfig, MerchantProviderAccount } from '../database/models';
 import { ReportService } from '../services/report.service';
 import { KycStatus, UserRole, generateRandomId } from '@rgs-ledger/shared';
 
@@ -130,6 +130,39 @@ export class AdminController {
       ).exec();
 
       res.status(200).json({ success: true, data: updated });
+    } catch (err) {
+      next(err);
+    }
+  }
+
+  static async listMerchantProviderAccounts(req: Request, res: Response, next: NextFunction): Promise<void> {
+    try {
+      const query: any = {};
+      if (req.query.merchantId) query.merchantId = req.query.merchantId;
+      if (req.query.providerType) query.providerType = req.query.providerType;
+      if (req.query.environment) query.environment = req.query.environment;
+
+      const accounts = await MerchantProviderAccount.find(query).sort({ createdAt: -1 }).exec();
+
+      // Return strictly safe view with masked credentials, never exposing encrypted or raw secrets
+      const safeAccounts = accounts.map(acc => ({
+        _id: acc._id,
+        merchantId: acc.merchantId,
+        providerType: acc.providerType,
+        accountModel: acc.accountModel,
+        environment: acc.environment,
+        status: acc.status,
+        isEnabled: acc.isEnabled,
+        credentialsMasked: acc.credentialsMasked,
+        vpaConfig: acc.vpaConfig,
+        subMerchantId: acc.subMerchantId,
+        verifiedAt: acc.verifiedAt,
+        lastRotatedAt: acc.lastRotatedAt,
+        createdAt: acc.createdAt,
+        updatedAt: acc.updatedAt
+      }));
+
+      res.status(200).json({ success: true, data: safeAccounts });
     } catch (err) {
       next(err);
     }

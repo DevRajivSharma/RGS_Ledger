@@ -52,9 +52,20 @@ export function createApp(): express.Application {
   });
   app.use('/api/', limiter);
 
-  // 5. Parsers
-  app.use(express.json({ limit: '5mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '5mb' }));
+  // 5. Parsers (Preserve pristine rawBody buffer for PSP cryptographic webhook verification)
+  app.use(express.json({
+    limit: '5mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
+  app.use(express.urlencoded({
+    extended: true,
+    limit: '5mb',
+    verify: (req: any, _res, buf) => {
+      req.rawBody = buf;
+    }
+  }));
   app.use(cookieParser(config.cookieSecret));
 
   // 6. Logging

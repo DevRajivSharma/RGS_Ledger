@@ -15,6 +15,7 @@
     "test": "npm run test --workspaces --if-present",
     "test:backend": "npm run --workspace=apps/api test",
     "test:core": "npm run --workspace=packages/payment-core test",
+    "validate:env": "npx tsx scripts/validate-env.ts",
     "seed": "npm run --workspace=apps/api seed",
     "dev:api": "npm run --workspace=apps/api dev",
     "dev:dashboard": "npm run --workspace=apps/dashboard dev",

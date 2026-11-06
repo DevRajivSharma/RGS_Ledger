@@ -12,6 +12,8 @@ import { WebhookController } from '../controllers/webhook.controller';
 import { SettlementController } from '../controllers/settlement.controller';
 import { ReportController } from '../controllers/report.controller';
 import { AdminController } from '../controllers/admin.controller';
+import { CallbackController } from '../controllers/callback.controller';
+import { MerchantProviderController } from '../controllers/merchant-provider.controller';
 
 import { authenticate, authenticateApiKey, requireRole } from '../middleware/auth';
 import { enforceTenantIsolation } from '../middleware/tenant';
@@ -83,6 +85,14 @@ router.use('/checkout', checkoutRouter);
 router.post('/payments/:id/simulate-callback', PaymentController.simulateCallback);
 
 // ==========================================
+// PROVIDER CALLBACK ROUTES (Direct Bank/PSP Inbound Webhooks)
+// ==========================================
+const callbackRouter = Router();
+callbackRouter.post('/phonepe', CallbackController.handlePhonePeCallback);
+callbackRouter.post('/paytm', CallbackController.handlePaytmCallback);
+router.use('/callbacks', callbackRouter);
+
+// ==========================================
 // 5. PAYMENT ROUTES
 // ==========================================
 const paymentRouter = Router();
@@ -91,6 +101,8 @@ paymentRouter.post('/initiate', handleIdempotency, validateBody(InitiatePaymentS
 paymentRouter.get('/:id', PaymentController.getPayment);
 paymentRouter.get('/', PaymentController.listPayments);
 paymentRouter.post('/:id/refund', handleIdempotency, PaymentController.createRefund);
+paymentRouter.post('/:id/confirm-manual', requireRole(UserRole.MERCHANT_OWNER, UserRole.MERCHANT_ADMIN, UserRole.FINANCE, UserRole.SUPER_ADMIN, UserRole.ADMIN), MerchantProviderController.confirmManualPayment);
+paymentRouter.post('/:id/reconcile', requireRole(UserRole.MERCHANT_OWNER, UserRole.MERCHANT_ADMIN, UserRole.FINANCE, UserRole.SUPER_ADMIN, UserRole.ADMIN), MerchantProviderController.reconcilePayment);
 paymentRouter.post('/:id/simulate-callback', PaymentController.simulateCallback);
 router.use('/payments', paymentRouter);
 
@@ -178,6 +190,17 @@ adminRouter.patch('/merchants/:merchantId/kyc', AdminController.updateMerchantKy
 adminRouter.get('/audit-logs', AdminController.listAuditLogs);
 adminRouter.get('/providers', AdminController.listProviderConfigs);
 adminRouter.patch('/providers/:providerId', AdminController.toggleProvider);
+adminRouter.get('/provider-accounts', AdminController.listMerchantProviderAccounts);
 router.use('/admin', adminRouter);
+
+// ==========================================
+// 14. MERCHANT PROVIDER ACCOUNT CONFIGURATION
+// ==========================================
+const providerAccountRouter = Router();
+providerAccountRouter.use(authenticate, enforceTenantIsolation);
+providerAccountRouter.get('/', MerchantProviderController.getProviders);
+providerAccountRouter.post('/', requireRole(UserRole.MERCHANT_OWNER, UserRole.MERCHANT_ADMIN, UserRole.SUPER_ADMIN, UserRole.ADMIN), MerchantProviderController.saveProvider);
+providerAccountRouter.delete('/:providerType', requireRole(UserRole.MERCHANT_OWNER, UserRole.MERCHANT_ADMIN, UserRole.SUPER_ADMIN, UserRole.ADMIN), MerchantProviderController.deleteProvider);
+router.use('/merchant/providers', providerAccountRouter);
 
 export default router;

@@ -49,7 +49,7 @@ export class PaymentService {
     };
     bankCode?: string;
     customerIp?: string;
-  }): Promise<{ payment: IPayment; order: IOrder; upiUri: string }> {
+  }): Promise<{ payment: IPayment; order: IOrder; upiUri: string; paymentUrl?: string; qrImage?: string }> {
     // Await any concurrent in-flight payment creation for this order
     const existingLock = this.initiationLocks.get(data.orderId);
     if (existingLock) {
@@ -198,7 +198,7 @@ export class PaymentService {
         ? ManualVerificationStatus.AWAITING_MANUAL_CONFIRMATION
         : ManualVerificationStatus.NOT_APPLICABLE;
 
-      let payment: IPayment;
+      let payment: any;
       try {
         // Create Initial Payment Record in PENDING (or FAILED if unconfigured) state in MongoDB
         payment = await Payment.create({
@@ -505,6 +505,7 @@ export class PaymentService {
     paymentId: string;
     utr: string;
     verifiedBy: string;
+    merchantId?: string;
     notes?: string;
   }): Promise<{ payment: IPayment; order: IOrder }> {
     const payment = await Payment.findById(params.paymentId).exec();
@@ -512,6 +513,14 @@ export class PaymentService {
       const err: any = new Error(`Payment ${params.paymentId} not found`);
       err.status = 404;
       err.code = 'PAYMENT_NOT_FOUND';
+      throw err;
+    }
+
+    // Strict tenant isolation: Non-admin users cannot confirm payments of other merchants
+    if (params.merchantId && payment.merchantId !== params.merchantId) {
+      const err: any = new Error('Access denied: Payment belongs to another merchant.');
+      err.status = 403;
+      err.code = 'FORBIDDEN_TENANT_ACCESS';
       throw err;
     }
 
@@ -574,12 +583,23 @@ export class PaymentService {
   /**
    * Phase 4: Independent Server-Side Payment Reconciliation via Provider Status API
    */
-  static async reconcilePayment(paymentId: string): Promise<{ payment: IPayment; order: IOrder; reconciled: boolean }> {
+  static async reconcilePayment(
+    paymentId: string,
+    merchantId?: string
+  ): Promise<{ payment: IPayment; order: IOrder; reconciled: boolean }> {
     const payment = await Payment.findById(paymentId).exec();
     if (!payment) {
       const err: any = new Error(`Payment ${paymentId} not found`);
       err.status = 404;
       err.code = 'PAYMENT_NOT_FOUND';
+      throw err;
+    }
+
+    // Strict tenant isolation
+    if (merchantId && payment.merchantId !== merchantId) {
+      const err: any = new Error('Access denied: Payment belongs to another merchant.');
+      err.status = 403;
+      err.code = 'FORBIDDEN_TENANT_ACCESS';
       throw err;
     }
 
