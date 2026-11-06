@@ -69,9 +69,9 @@ export const CheckoutPage: React.FC = () => {
           if (json.data.payment.status === 'SUCCESS') {
             setCompletedPayment(json.data.payment);
           }
-        } else {
-          // Automatically create initial PENDING payment attempt on QR load with stable idempotency
-          await initiatePaymentAttempt('UPI_QR', json.data);
+          if (json.data.payment.method) {
+            setActiveTab(json.data.payment.method);
+          }
         }
       } else {
         setPaymentStatus('EXPIRED');
@@ -144,16 +144,13 @@ export const CheckoutPage: React.FC = () => {
     }
   }, [sessionData, activeTab]);
 
-  // Handle switching tabs
-  const handleTabChange = async (tab: 'UPI_QR' | 'UPI_INTENT' | 'CARD' | 'NETBANKING') => {
+  // Handle switching tabs (does not prematurely create payment attempts)
+  const handleTabChange = (tab: 'UPI_QR' | 'UPI_INTENT' | 'CARD' | 'NETBANKING') => {
     setActiveTab(tab);
-    // If switching methods and current payment is not SUCCESS, ensure payment attempt method is recorded
-    if (paymentStatus !== 'SUCCESS') {
-      await initiatePaymentAttempt(tab);
-    }
+    setErrorMessage('');
   };
 
-  // Phase 3 & 4: Process / Simulate resolution on the SAME transaction
+  // Phase 3 & 4: Process / Simulate resolution with explicitly selected method
   const handleProcessPayment = async (
     methodOverride?: string,
     upiOverride?: string,
@@ -166,7 +163,7 @@ export const CheckoutPage: React.FC = () => {
 
     let payload: any = {
       paymentId: paymentId || sessionData?.session?.paymentId,
-      method: method === 'UPI_QR' ? 'UPI_QR' : method,
+      method: method,
       action: actionOverride,
       upiId: upiOverride || (method.startsWith('UPI') ? upiId : undefined)
     };
@@ -287,6 +284,10 @@ export const CheckoutPage: React.FC = () => {
             <div className="flex justify-between">
               <span className="text-slate-400">Payment ID:</span>
               <span className="font-mono text-blue-400 font-medium">{completedPayment?._id || paymentId}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400">Payment Method:</span>
+              <span className="font-semibold text-blue-400">{completedPayment?.method || activeTab}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400">Order ID:</span>
@@ -535,7 +536,7 @@ export const CheckoutPage: React.FC = () => {
 
               <div className="flex items-center space-x-1.5 text-xs text-slate-400">
                 <Clock className="h-3.5 w-3.5 text-amber-400" />
-                <span>QR linked to Payment: <strong className="text-blue-400 font-mono">{paymentId}</strong></span>
+                <span>QR Reference: <strong className="text-blue-400 font-mono">{paymentId || sessionData?.session?.id}</strong></span>
               </div>
 
               <div className="w-full pt-2 space-y-2">

@@ -46,6 +46,10 @@ export class CheckoutController {
 
   static async initiatePayment(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
+      if (!req.body.method) {
+        res.status(400).json({ success: false, error: { code: 'INVALID_PAYMENT_METHOD', message: 'Payment method is required' } });
+        return;
+      }
       const result = await CheckoutService.initiatePayment(req.params.sessionId, {
         method: req.body.method as PaymentMethodType,
         upiId: req.body.upiId,
@@ -71,13 +75,39 @@ export class CheckoutController {
         return;
       }
 
-      // Step 1: Ensure persistent PENDING payment attempt exists
-      let paymentId = req.body.paymentId || sessionData.session.paymentId;
+      // Step 1: Ensure persistent PENDING payment attempt exists with the requested method
+      const { Payment } = await import('../database/models');
+      const requestedMethod = req.body.method as PaymentMethodType;
+
+      let paymentId = req.body.paymentId;
+      let existingPayment = paymentId ? await Payment.findById(paymentId).exec() : null;
+      if (!existingPayment && sessionData.session.paymentId) {
+        existingPayment = await Payment.findById(sessionData.session.paymentId).exec();
+      }
+
       let upiUri = sessionData.session.upiUri;
 
-      if (!paymentId) {
+      if (existingPayment) {
+        if (existingPayment.status === 'SUCCESS') {
+          // Idempotent re-resolution of already captured payment
+          paymentId = existingPayment._id;
+        } else if (requestedMethod && existingPayment.method !== requestedMethod) {
+          // Method changed: cancel old pending attempt and create new one
+          const attempt = await CheckoutService.initiatePayment(req.params.sessionId, {
+            method: requestedMethod,
+            upiId: req.body.upiId,
+            cardDetails: req.body.cardDetails,
+            bankCode: req.body.bankCode,
+            customerIp: req.ip
+          });
+          paymentId = attempt.payment._id;
+          upiUri = attempt.upiUri;
+        } else {
+          paymentId = existingPayment._id;
+        }
+      } else {
         const attempt = await CheckoutService.initiatePayment(req.params.sessionId, {
-          method: (req.body.method as PaymentMethodType) || PaymentMethodType.UPI_QR,
+          method: requestedMethod || PaymentMethodType.CARD,
           upiId: req.body.upiId,
           cardDetails: req.body.cardDetails,
           bankCode: req.body.bankCode,
@@ -133,11 +163,29 @@ export class CheckoutController {
   static async simulatePayment(req: Request, res: Response, next: NextFunction): Promise<void> {
     try {
       const sessionData = await CheckoutService.getSession(req.params.sessionId);
-      let paymentId = req.body.paymentId || sessionData.session.paymentId;
+      const { Payment } = await import('../database/models');
+      const requestedMethod = req.body.method as PaymentMethodType;
 
-      if (!paymentId) {
+      let paymentId = req.body.paymentId;
+      let existingPayment = paymentId ? await Payment.findById(paymentId).exec() : null;
+      if (!existingPayment && sessionData.session.paymentId) {
+        existingPayment = await Payment.findById(sessionData.session.paymentId).exec();
+      }
+
+      if (existingPayment) {
+        if (existingPayment.status === 'SUCCESS') {
+          paymentId = existingPayment._id;
+        } else if (requestedMethod && existingPayment.method !== requestedMethod) {
+          const attempt = await CheckoutService.initiatePayment(req.params.sessionId, {
+            method: requestedMethod
+          });
+          paymentId = attempt.payment._id;
+        } else {
+          paymentId = existingPayment._id;
+        }
+      } else {
         const attempt = await CheckoutService.initiatePayment(req.params.sessionId, {
-          method: (req.body.method as PaymentMethodType) || PaymentMethodType.UPI_QR
+          method: requestedMethod || PaymentMethodType.CARD
         });
         paymentId = attempt.payment._id;
       }

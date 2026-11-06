@@ -173,23 +173,32 @@ export class CheckoutService {
     }
 
     if (existingPayment && existingPayment.status === 'PENDING') {
-      session.paymentId = existingPayment._id;
-      await session.save();
+      if (existingPayment.method === data.method) {
+        session.paymentId = existingPayment._id;
+        await session.save();
 
-      const upiUri = GenericUPIIntentProvider.generateIntentUri({
-        payeeVpa: 'sandbox-merchant@rgsbank',
-        payeeName: 'Sandbox Merchant',
-        transactionRef: String(existingPayment._id),
-        amountPaise: existingPayment.amount,
-        currency: existingPayment.currency
-      });
+        const upiUri = GenericUPIIntentProvider.generateIntentUri({
+          payeeVpa: 'sandbox-merchant@rgsbank',
+          payeeName: 'Sandbox Merchant',
+          transactionRef: String(existingPayment._id),
+          amountPaise: existingPayment.amount,
+          currency: existingPayment.currency
+        });
 
-      return {
-        payment: existingPayment,
-        order,
-        upiUri,
-        sessionId: session._id
-      };
+        return {
+          payment: existingPayment,
+          order,
+          upiUri,
+          sessionId: session._id
+        };
+      } else {
+        // Method changed: safely cancel old pending attempt to preserve payment history
+        existingPayment.status = 'CANCELLED' as any;
+        existingPayment.errorCode = 'PAYMENT_METHOD_CHANGED';
+        existingPayment.errorDescription = `Superseded: Customer changed payment method from ${existingPayment.method} to ${data.method}`;
+        await existingPayment.save();
+        session.paymentId = undefined;
+      }
     }
 
     // Create a new persistent payment attempt in PENDING state

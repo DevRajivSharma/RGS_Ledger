@@ -60,19 +60,27 @@ export class PaymentService {
       }).exec();
 
       if (activePending) {
-        const order = await Order.findById(data.orderId).exec();
-        const upiUri = GenericUPIIntentProvider.generateIntentUri({
-          payeeVpa: 'sandbox-merchant@rgsbank',
-          payeeName: 'Sandbox Merchant',
-          transactionRef: String(activePending._id),
-          amountPaise: activePending.amount,
-          currency: activePending.currency
-        });
-        return {
-          payment: activePending,
-          order: order!,
-          upiUri
-        };
+        if (activePending.method === data.method) {
+          const order = await Order.findById(data.orderId).exec();
+          const upiUri = GenericUPIIntentProvider.generateIntentUri({
+            payeeVpa: 'sandbox-merchant@rgsbank',
+            payeeName: 'Sandbox Merchant',
+            transactionRef: String(activePending._id),
+            amountPaise: activePending.amount,
+            currency: activePending.currency
+          });
+          return {
+            payment: activePending,
+            order: order!,
+            upiUri
+          };
+        } else {
+          // Method changed: cancel the old pending attempt and proceed to create new attempt
+          activePending.status = PaymentStatus.CANCELLED;
+          activePending.errorCode = 'PAYMENT_METHOD_CHANGED';
+          activePending.errorDescription = `Superseded: Customer changed payment method from ${activePending.method} to ${data.method}`;
+          await activePending.save();
+        }
       }
     }
 
@@ -106,18 +114,26 @@ export class PaymentService {
       }).exec();
 
       if (existingPending) {
-        const upiUri = GenericUPIIntentProvider.generateIntentUri({
-          payeeVpa: 'sandbox-merchant@rgsbank',
-          payeeName: 'Sandbox Merchant',
-          transactionRef: String(existingPending._id),
-          amountPaise: existingPending.amount,
-          currency: existingPending.currency
-        });
-        return {
-          payment: existingPending,
-          order,
-          upiUri
-        };
+        if (existingPending.method === data.method) {
+          const upiUri = GenericUPIIntentProvider.generateIntentUri({
+            payeeVpa: 'sandbox-merchant@rgsbank',
+            payeeName: 'Sandbox Merchant',
+            transactionRef: String(existingPending._id),
+            amountPaise: existingPending.amount,
+            currency: existingPending.currency
+          });
+          return {
+            payment: existingPending,
+            order,
+            upiUri
+          };
+        } else {
+          // Method changed: cancel the old pending attempt safely and preserve history
+          existingPending.status = PaymentStatus.CANCELLED;
+          existingPending.errorCode = 'PAYMENT_METHOD_CHANGED';
+          existingPending.errorDescription = `Superseded: Customer changed payment method from ${existingPending.method} to ${data.method}`;
+          await existingPending.save();
+        }
       }
       // Transition order status to ATTEMPTED if currently in CREATED or FAILED
       if (order.status !== OrderStatus.ATTEMPTED) {
@@ -327,6 +343,10 @@ export class PaymentService {
         payload: {
           paymentId: String(payment._id),
           orderId: String(order._id),
+          amount: payment.amount,
+          currency: payment.currency,
+          status: payment.status,
+          method: payment.method,
           errorCode: payment.errorCode,
           errorDescription: payment.errorDescription
         }
