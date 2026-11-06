@@ -14,7 +14,11 @@ import {
   LedgerAccountType,
   LedgerEntryDirection,
   LedgerTransactionType,
-  DisputeStatus
+  DisputeStatus,
+  ProviderType,
+  ProviderAccountStatus,
+  ProviderAccountModel,
+  ManualVerificationStatus
 } from '@rgs-ledger/shared';
 
 // -----------------------------------------------------------------------------
@@ -202,6 +206,18 @@ export interface IPayment {
   currency: string;
   status: PaymentStatus;
   method: PaymentMethodType;
+  providerType?: ProviderType;
+  providerTransactionId?: string;
+  manualVerificationStatus?: ManualVerificationStatus;
+  manualVerificationDetails?: {
+    verifiedBy: string;
+    utr: string;
+    verifiedAt: Date;
+    notes?: string;
+  };
+  paymentUrl?: string;
+  upiUri?: string;
+  rawProviderResponse?: Record<string, any>;
   upiId?: string;
   cardNetwork?: string;
   cardLast4?: string;
@@ -223,6 +239,18 @@ const PaymentSchema = new Schema<IPayment>({
   currency: { type: String, default: 'INR' },
   status: { type: String, enum: Object.values(PaymentStatus), default: PaymentStatus.CREATED, index: true },
   method: { type: String, enum: Object.values(PaymentMethodType), required: true },
+  providerType: { type: String, enum: Object.values(ProviderType), default: ProviderType.SANDBOX, index: true },
+  providerTransactionId: { type: String, index: true },
+  manualVerificationStatus: { type: String, enum: Object.values(ManualVerificationStatus), default: ManualVerificationStatus.NOT_APPLICABLE, index: true },
+  manualVerificationDetails: {
+    verifiedBy: String,
+    utr: String,
+    verifiedAt: Date,
+    notes: String
+  },
+  paymentUrl: { type: String },
+  upiUri: { type: String },
+  rawProviderResponse: { type: Schema.Types.Mixed },
   upiId: { type: String },
   cardNetwork: { type: String },
   cardLast4: { type: String },
@@ -633,3 +661,55 @@ const ProviderConfigSchema = new Schema<IProviderConfig>({
 }, { timestamps: true });
 
 export const ProviderConfig = mongoose.model<IProviderConfig>('ProviderConfig', ProviderConfigSchema);
+
+// -----------------------------------------------------------------------------
+// MERCHANT PROVIDER ACCOUNT MODEL (Multi-Merchant Provider Routing)
+// -----------------------------------------------------------------------------
+export interface IMerchantProviderAccount {
+  _id: string;
+  merchantId: string;
+  providerType: ProviderType;
+  accountModel: ProviderAccountModel;
+  environment: EnvironmentMode;
+  status: ProviderAccountStatus;
+  isEnabled: boolean;
+  credentialsEncrypted: string; // AES-256-GCM encrypted JSON string
+  credentialsMasked: Record<string, string>; // Masked safe representation for UI
+  vpaConfig?: {
+    vpa: string;
+    displayName: string;
+    mcc?: string;
+  };
+  subMerchantId?: string;
+  verifiedAt?: Date;
+  lastRotatedAt?: Date;
+  metadata?: Record<string, any>;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const MerchantProviderAccountSchema = new Schema<IMerchantProviderAccount>({
+  _id: { type: String, required: true },
+  merchantId: { type: String, required: true, index: true },
+  providerType: { type: String, enum: Object.values(ProviderType), required: true, index: true },
+  accountModel: { type: String, enum: Object.values(ProviderAccountModel), default: ProviderAccountModel.MERCHANT_DIRECT },
+  environment: { type: String, enum: Object.values(EnvironmentMode), default: EnvironmentMode.SANDBOX, index: true },
+  status: { type: String, enum: Object.values(ProviderAccountStatus), default: ProviderAccountStatus.NOT_CONFIGURED, index: true },
+  isEnabled: { type: Boolean, default: false },
+  credentialsEncrypted: { type: String, default: '' },
+  credentialsMasked: { type: Schema.Types.Mixed, default: {} },
+  vpaConfig: {
+    vpa: String,
+    displayName: String,
+    mcc: String
+  },
+  subMerchantId: { type: String },
+  verifiedAt: { type: Date },
+  lastRotatedAt: { type: Date },
+  metadata: { type: Schema.Types.Mixed, default: {} }
+}, { timestamps: true });
+
+MerchantProviderAccountSchema.index({ merchantId: 1, providerType: 1, environment: 1 }, { unique: true });
+
+export const MerchantProviderAccount = mongoose.model<IMerchantProviderAccount>('MerchantProviderAccount', MerchantProviderAccountSchema);
+

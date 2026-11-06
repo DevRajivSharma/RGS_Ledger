@@ -10,7 +10,8 @@
     "test": "node --test dist/**/*.test.js"
   },
   "dependencies": {
-    "@rgs-ledger/shared": "file:../shared"
+    "@rgs-ledger/shared": "file:../shared",
+    "upipay": "1.0.0"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

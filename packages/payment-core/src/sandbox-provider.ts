@@ -5,6 +5,7 @@ import {
 } from '@rgs-ledger/shared';
 import {
   IPaymentProvider,
+  PaymentProviderCapabilities,
   ProviderOrderRequest,
   ProviderOrderResponse,
   ProviderPaymentRequest,
@@ -17,6 +18,18 @@ import { GenericUPIIntentProvider } from './upi-intent';
 export class SandboxPaymentProvider implements IPaymentProvider {
   readonly providerId = 'sandbox_provider';
   readonly isLive = false;
+  readonly capabilities: PaymentProviderCapabilities = {
+    supportsUpiQr: true,
+    supportsUpiIntent: true,
+    supportsHostedCheckout: true,
+    supportsCards: true,
+    supportsNetbanking: true,
+    supportsWebhooks: true,
+    supportsStatusCheck: true,
+    supportsRefunds: true,
+    supportsPartialRefunds: true,
+    supportsPaymentMethodReporting: true
+  };
 
   async createOrder(req: ProviderOrderRequest): Promise<ProviderOrderResponse> {
     return {

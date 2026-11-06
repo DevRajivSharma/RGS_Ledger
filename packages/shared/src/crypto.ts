@@ -96,3 +96,66 @@ export function verifyWebhookSignature(
 export function generateRandomId(prefix: string): string {
   return `${prefix}_${crypto.randomBytes(12).toString('hex')}`;
 }
+
+/**
+ * Derives a 32-byte Buffer from hex string or raw passphrase
+ */
+function getKeyBuffer(key: string): Buffer {
+  if (/^[0-9a-fA-F]{64}$/.test(key)) {
+    return Buffer.from(key, 'hex');
+  }
+  return crypto.createHash('sha256').update(key).digest();
+}
+
+/**
+ * AES-256-GCM authenticated encryption for sensitive provider credentials
+ * Returns serialized string format: iv:authTag:ciphertext (hex encoded)
+ */
+export function encryptSecret(plaintext: string, secretKey: string): string {
+  if (!plaintext) return '';
+  const keyBuf = getKeyBuffer(secretKey);
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+  
+  let encrypted = cipher.update(plaintext, 'utf8', 'hex');
+  encrypted += cipher.final('hex');
+  const authTag = cipher.getAuthTag().toString('hex');
+
+  return `${iv.toString('hex')}:${authTag}:${encrypted}`;
+}
+
+/**
+ * AES-256-GCM authenticated decryption
+ */
+export function decryptSecret(encryptedPayload: string, secretKey: string): string {
+  if (!encryptedPayload) return '';
+  const parts = encryptedPayload.split(':');
+  if (parts.length !== 3) {
+    throw new Error('Invalid encrypted payload format: expected iv:authTag:ciphertext');
+  }
+
+  const [ivHex, authTagHex, encryptedHex] = parts;
+  const keyBuf = getKeyBuffer(secretKey);
+  const iv = Buffer.from(ivHex, 'hex');
+  const authTag = Buffer.from(authTagHex, 'hex');
+
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
+  decipher.setAuthTag(authTag);
+
+  let decrypted = decipher.update(encryptedHex, 'hex', 'utf8');
+  decrypted += decipher.final('utf8');
+
+  return decrypted;
+}
+
+/**
+ * Safely masks sensitive keys/secrets for logging and UI display (e.g., 'sec_...9f2a')
+ */
+export function maskSecret(secret?: string): string {
+  if (!secret) return '';
+  if (secret.length <= 8) return '****';
+  const prefix = secret.slice(0, 4);
+  const suffix = secret.slice(-4);
+  return `${prefix}${'*'.repeat(Math.min(secret.length - 8, 8))}${suffix}`;
+}
+
