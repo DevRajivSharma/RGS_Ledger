@@ -13,7 +13,9 @@ import {
   WebhookDeliveryModel,
   ReconciliationCaseModel,
   BackgroundJobModel,
-  PlatformConfigModel
+  PlatformConfigModel,
+  findMerchantByIdDefensive,
+  flexibleIdQuery
 } from '../../database/models.js';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '../../middleware/auth.js';
 import { security } from '../../utils/security.js';
@@ -556,7 +558,7 @@ router.get('/merchants', requireAuth as any, requireAdmin as any, async (req: Au
 router.get('/merchants/:id', requireAuth as any, requireAdmin as any, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const merchantId = req.params.id;
-    const merchant = (await MerchantModel.findById(merchantId).lean()) as any;
+    const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -694,7 +696,7 @@ router.post('/merchants/:id/suspend', requireAuth as any, requireAdmin as any, a
     const merchantId = req.params.id;
     const validated = SuspendMerchantSchema.parse(req.body);
 
-    const merchant = await MerchantModel.findById(merchantId);
+    const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -704,8 +706,10 @@ router.post('/merchants/:id/suspend', requireAuth as any, requireAdmin as any, a
       return;
     }
 
-    merchant.status = 'SUSPENDED';
-    await merchant.save();
+    await mongoose.connection.collection('merchants').updateOne(
+      flexibleIdQuery(merchantId),
+      { $set: { status: 'SUSPENDED' } }
+    );
 
     // Active session revocation: clear all user refresh tokens for this suspended merchant
     await UserModel.updateMany({ merchantId: merchant._id }, { $set: { refreshTokenHash: null } }).catch(() => {});
@@ -744,7 +748,7 @@ router.post('/merchants/:id/reactivate', requireAuth as any, requireAdmin as any
     const merchantId = req.params.id;
     const validated = ReactivateMerchantSchema.parse(req.body || {});
 
-    const merchant = await MerchantModel.findById(merchantId);
+    const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -754,8 +758,10 @@ router.post('/merchants/:id/reactivate', requireAuth as any, requireAdmin as any
       return;
     }
 
-    merchant.status = 'ACTIVE';
-    await merchant.save();
+    await mongoose.connection.collection('merchants').updateOne(
+      flexibleIdQuery(merchantId),
+      { $set: { status: 'ACTIVE' } }
+    );
 
     await auditService.recordLog({
       userId: req.user?.userId,

@@ -659,7 +659,12 @@ export async function findMerchantByIdDefensive(merchantId: string): Promise<any
     const fromModel = await MerchantModel.findById(merchantId).lean();
     if (fromModel) return fromModel;
   } catch {}
-  return mongoose.connection.collection('merchants').findOne(flexibleIdQuery(merchantId));
+  try {
+    if (mongoose.connection?.readyState === 1) {
+      return await mongoose.connection.collection('merchants').findOne(flexibleIdQuery(merchantId));
+    }
+  } catch {}
+  return null;
 }
 
 /**
@@ -671,5 +676,10 @@ export async function findUserByIdDefensive(userId: string): Promise<any> {
     const fromModel = await UserModel.findById(userId).lean();
     if (fromModel) return fromModel;
   } catch {}
-  return mongoose.connection.collection('users').findOne(flexibleIdQuery(userId));
+  try {
+    if (mongoose.connection?.readyState === 1) {
+      return await mongoose.connection.collection('users').findOne(flexibleIdQuery(userId));
+    }
+  } catch {}
+  return null;
 }

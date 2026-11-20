@@ -21,7 +21,9 @@ import {
   MerchantModel,
   EvidenceTemplateModel,
   MerchantBankAccountModel,
-  PaymentEvidenceModel
+  PaymentEvidenceModel,
+  findMerchantByIdDefensive,
+  flexibleIdQuery
 } from '../../database/models.js';
 import { EvidenceIngestionService } from '../evidence/evidence-ingestion.service.js';
 import { TemplateManager } from '../templates/template-manager.js';
@@ -55,7 +57,7 @@ async function authenticateMerchantOrDevice(req: any, res: Response, next: any) 
 router.post(['/devices/generate-pairing-code', '/generate-pairing-code'], requireAuth, async (req: AuthenticatedRequest, res: Response): Promise<void> => {
   try {
     const merchantId = req.merchantId!;
-    const merchant = (await MerchantModel.findById(merchantId).lean()) as any;
+    const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -125,7 +127,7 @@ router.post(['/devices/pair', '/pair'], async (req: Request, res: Response): Pro
       return;
     }
 
-    const merchant = (await MerchantModel.findById(pairingRecord.merchantId).lean()) as any;
+    const merchant = (await findMerchantByIdDefensive(pairingRecord.merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -281,7 +283,7 @@ router.post(['/devices/:id/revoke', '/:id/revoke'], requireAuth, revokeDeviceHan
 router.get(['/devices/notification-sources', '/notification-sources'], requireAuth, async (req: Request, res: Response) => {
   try {
     const merchantId = (req as any).user?.merchantId || (req as any).merchantId;
-    const merchant = await MerchantModel.findById(merchantId).lean() as any;
+    const merchant = await findMerchantByIdDefensive(merchantId) as any;
     const disabledList = new Set<string>(merchant?.disabledNotificationPackages || []);
 
     // Aggregate detected packages from ingested evidence
@@ -383,7 +385,7 @@ router.post(['/devices/notification-sources/:packageName/toggle', '/notification
       return;
     }
 
-    const merchant = await MerchantModel.findById(merchantId);
+    const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
         success: false,
@@ -392,7 +394,7 @@ router.post(['/devices/notification-sources/:packageName/toggle', '/notification
       return;
     }
 
-    const currentDisabled: string[] = (merchant as any).disabledNotificationPackages || [];
+    const currentDisabled: string[] = merchant.disabledNotificationPackages || [];
     const idx = currentDisabled.indexOf(packageName);
     let isNowEnabled: boolean;
 
@@ -404,8 +406,10 @@ router.post(['/devices/notification-sources/:packageName/toggle', '/notification
       isNowEnabled = false;
     }
 
-    (merchant as any).disabledNotificationPackages = currentDisabled;
-    await merchant.save();
+    await mongoose.connection.collection('merchants').updateOne(
+      flexibleIdQuery(merchantId),
+      { $set: { disabledNotificationPackages: currentDisabled } }
+    );
 
     res.json({
       success: true,
@@ -482,7 +486,7 @@ async function processNotificationIngestion(
   );
 
   // 1. Check if merchant disabled this notification source package
-  const merchant = await MerchantModel.findById(merchantId).lean() as any;
+  const merchant = await findMerchantByIdDefensive(merchantId) as any;
   const disabledPackages: string[] = merchant?.disabledNotificationPackages || [];
   if (packageName && disabledPackages.includes(packageName)) {
     return {

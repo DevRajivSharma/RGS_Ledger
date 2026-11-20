@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { PaymentLinkModel, PaymentRequestModel, MerchantModel, MerchantBankAccountModel, AuditLogModel } from '../../database/models.js';
+import { PaymentLinkModel, PaymentRequestModel, MerchantModel, MerchantBankAccountModel, AuditLogModel, findMerchantByIdDefensive } from '../../database/models.js';
 import { CreatePaymentLinkSchema, InitiateLinkPaymentSchema } from '@rgs-ledger/validation';
 import { PaymentLinkStatus, PaymentStatus } from '@rgs-ledger/shared-types';
 import { PaymentLinkDto, PublicPaymentLinkDetails } from '@rgs-ledger/api-contracts';
@@ -18,7 +18,7 @@ export class PaymentLinkService {
     const validated = CreatePaymentLinkSchema.parse(input);
 
     // Verify merchant existence
-    const merchant = await MerchantModel.findById(merchantId).lean();
+    const merchant = await findMerchantByIdDefensive(merchantId);
     if (!merchant) {
       throw new Error('Merchant account not found');
     }
@@ -133,7 +133,7 @@ export class PaymentLinkService {
       await linkDoc.save();
     }
 
-    const merchant = (await MerchantModel.findById(linkDoc.merchantId).lean()) as any;
+    const merchant = (await findMerchantByIdDefensive(linkDoc.merchantId)) as any;
 
     return {
       linkReference: linkDoc.linkReference,
@@ -184,7 +184,7 @@ export class PaymentLinkService {
       payableAmountPaise = validated.amountPaise;
     }
 
-    const merchant = (await MerchantModel.findById(linkDoc.merchantId).lean()) as any;
+    const merchant = (await findMerchantByIdDefensive(linkDoc.merchantId)) as any;
     if (!merchant) {
       throw new Error('Merchant account not found');
     }

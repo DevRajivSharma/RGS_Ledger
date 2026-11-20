@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import mongoose from 'mongoose';
-import { PaymentRequestModel, MerchantModel, MerchantBankAccountModel } from '../../database/models.js';
+import { PaymentRequestModel, MerchantModel, MerchantBankAccountModel, findMerchantByIdDefensive } from '../../database/models.js';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth.js';
 import { CreatePaymentRequestSchema } from '@rgs-ledger/validation';
 import { ApiResponse, CancelPaymentResponse } from '@rgs-ledger/api-contracts';
@@ -65,7 +65,7 @@ export class PaymentService {
 
   constructor(
     private repo: IPaymentRepository,
-    private merchantFinder: (id: string) => Promise<any> = (id) => MerchantModel.findById(id).lean()
+    private merchantFinder: (id: string) => Promise<any> = (id) => findMerchantByIdDefensive(id)
   ) {}
 
   async createPayment(merchantId: string, input: any) {
@@ -373,7 +373,7 @@ export class PaymentService {
 }
 
 const paymentRepo = new MongoPaymentRepository();
-export const paymentService = new PaymentService(paymentRepo);
+export const paymentService = new PaymentService(paymentRepo, findMerchantByIdDefensive);
 
 const router = Router();
 

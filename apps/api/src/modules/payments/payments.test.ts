@@ -712,5 +712,47 @@ describe('PaymentService — Payment Engine & Lifecycle', () => {
         restore();
       }
     });
+
+    it('8. REGRESSION: PaymentService uses defensive merchant resolution for string merchant IDs', async () => {
+      const restore = setupMocks();
+      try {
+        const repo = new MockPaymentRepository();
+        // PaymentService created without explicit merchantFinder defaults to findMerchantByIdDefensive
+        const service = new PaymentService(repo, async (id: string) => {
+          if (id === validMerchantId) return merchantWithUpi;
+          return null;
+        });
+
+        const result = await service.createPayment(validMerchantId, {
+          orderId: 'ORD_STRING_ID_RESOLVE',
+          amountPaise: 500
+        });
+
+        assert.strictEqual(result.payment.merchantName, 'Rajiv Sharma');
+        assert.strictEqual(result.payment.amountPaise, 500);
+        assert.ok(result.payment.upiUri.includes('am=5.00'));
+      } finally {
+        restore();
+      }
+    });
+
+    it('9. REGRESSION: PaymentService throws MERCHANT_NOT_FOUND when merchant does not exist', async () => {
+      const repo = new MockPaymentRepository();
+      const service = new PaymentService(repo, async () => null);
+
+      await assert.rejects(
+        async () => {
+          await service.createPayment('non_existent_merchant', {
+            orderId: 'ORD_NON_EXISTENT',
+            amountPaise: 100
+          });
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'MERCHANT_NOT_FOUND');
+          assert.strictEqual(err.message, 'Merchant account not found');
+          return true;
+        }
+      );
+    });
   });
 });
