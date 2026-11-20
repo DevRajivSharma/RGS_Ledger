@@ -1,10 +1,11 @@
 import React from 'react';
+import { getMerchantSignupUrl } from '../config/urls.js';
 
 export interface PricingPageProps {
   onNavigate: (path: string) => void;
 }
 
-export const PricingPage: React.FC<PricingPageProps> = ({ onNavigate }) => {
+export const PricingPage: React.FC<PricingPageProps> = ({ onNavigate: _onNavigate }) => {
   return (
     <div style={{ maxWidth: '1000px', margin: '0 auto', padding: '40px 20px 60px' }}>
       {/* Header */}
@@ -62,14 +63,17 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onNavigate }) => {
           Commercial pricing and production subscription tiers have not yet been finalized. We do not claim permanent free tier guarantees. Any future billing updates will be announced with advance notice before transition from beta.
         </div>
 
-        <button
-          onClick={() => onNavigate('/register')}
+        <a
+          href={getMerchantSignupUrl()}
           style={{
+            display: 'block',
+            textAlign: 'center',
+            textDecoration: 'none',
+            boxSizing: 'border-box',
             width: '100%',
             padding: '14px',
             background: '#2563EB',
             color: '#FFFFFF',
-            border: 'none',
             borderRadius: '8px',
             fontSize: '15px',
             fontWeight: 700,
@@ -77,7 +81,7 @@ export const PricingPage: React.FC<PricingPageProps> = ({ onNavigate }) => {
           }}
         >
           Create Beta Account →
-        </button>
+        </a>
       </div>
     </div>
   );

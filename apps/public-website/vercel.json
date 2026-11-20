@@ -1,10 +1,27 @@
 {
   "framework": "vite",
   "cleanUrls": true,
+  "redirects": [
+    {
+      "source": "/login",
+      "destination": "https://app.rgsledger.rajivsharma.online/login",
+      "permanent": false
+    },
+    {
+      "source": "/signup",
+      "destination": "https://app.rgsledger.rajivsharma.online/signup",
+      "permanent": false
+    },
+    {
+      "source": "/register",
+      "destination": "https://app.rgsledger.rajivsharma.online/signup",
+      "permanent": false
+    }
+  ],
   "rewrites": [
     {
       "source": "/privacy",
-      "destination": "/privacy/index.html"
+      "destination": "/privacy.html"
     },
     {
       "source": "/privacy/",
@@ -12,14 +29,22 @@
     },
     {
       "source": "/terms",
-      "destination": "/terms/index.html"
+      "destination": "/terms.html"
     },
     {
       "source": "/terms/",
       "destination": "/terms/index.html"
     },
     {
-      "source": "/(.*)",
+      "source": "/sitemap.xml",
+      "destination": "/sitemap.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/((?!privacy|terms|downloads|robots\\.txt|sitemap\\.xml).*)",
       "destination": "/index.html"
     }
   ],
@@ -38,6 +63,19 @@
         {
           "key": "Referrer-Policy",
           "value": "strict-origin-when-cross-origin"
+        }
+      ]
+    },
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        {
+          "key": "Content-Type",
+          "value": "application/xml; charset=utf-8"
+        },
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=3600"
         }
       ]
     }

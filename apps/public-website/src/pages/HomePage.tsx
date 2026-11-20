@@ -1,5 +1,5 @@
 import React from 'react';
-import { APP_URLS } from '../config/urls.js';
+import { APP_URLS, getMerchantSignupUrl } from '../config/urls.js';
 
 export interface HomePageProps {
   onNavigate: (path: string) => void;
@@ -24,13 +24,14 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               Generate UPI payment requests using your own receiving account and reconcile incoming credit alerts through merchant-authorized email and Android notification evidence.
             </p>
             <div style={{ display: 'flex', gap: '14px', flexWrap: 'wrap' }}>
-              <button
-                onClick={() => onNavigate('/register')}
+              <a
+                href={getMerchantSignupUrl()}
                 style={{
+                  display: 'inline-block',
+                  textDecoration: 'none',
                   padding: '12px 26px',
                   background: '#2563EB',
                   color: '#FFFFFF',
-                  border: 'none',
                   borderRadius: '8px',
                   fontSize: '15px',
                   fontWeight: 700,
@@ -39,7 +40,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
                 }}
               >
                 Start for Free →
-              </button>
+              </a>
               <button
                 onClick={() => onNavigate('/how-it-works')}
                 style={{
@@ -292,13 +293,14 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
             Join our Early Access Beta. Set up your receiving UPI ID, pair your companion device, and start receiving payments directly without custody middlemen.
           </p>
           <div style={{ display: 'flex', justifyContent: 'center', gap: '14px', flexWrap: 'wrap' }}>
-            <button
-              onClick={() => onNavigate('/register')}
+            <a
+              href={getMerchantSignupUrl()}
               style={{
+                display: 'inline-block',
+                textDecoration: 'none',
                 padding: '12px 30px',
                 background: '#2563EB',
                 color: '#FFF',
-                border: 'none',
                 borderRadius: '8px',
                 fontSize: '15px',
                 fontWeight: 700,
@@ -306,7 +308,7 @@ export const HomePage: React.FC<HomePageProps> = ({ onNavigate }) => {
               }}
             >
               Get Started for Free →
-            </button>
+            </a>
             <button
               onClick={() => onNavigate('/contact')}
               style={{

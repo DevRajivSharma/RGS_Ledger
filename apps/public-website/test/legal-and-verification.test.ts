@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getMerchantLoginUrl, getMerchantSignupUrl, APP_URLS } from '../src/config/urls.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,7 +11,9 @@ const websiteRoot = path.resolve(__dirname, '..');
 
 describe('Google OAuth Branding & Legal Pages Verification', () => {
   const privacyHtmlPath = path.join(websiteRoot, 'public', 'privacy', 'index.html');
+  const privacyFlatHtmlPath = path.join(websiteRoot, 'public', 'privacy.html');
   const termsHtmlPath = path.join(websiteRoot, 'public', 'terms', 'index.html');
+  const termsFlatHtmlPath = path.join(websiteRoot, 'public', 'terms.html');
   const indexHtmlPath = path.join(websiteRoot, 'index.html');
   const robotsTxtPath = path.join(websiteRoot, 'public', 'robots.txt');
   const sitemapXmlPath = path.join(websiteRoot, 'public', 'sitemap.xml');
@@ -19,9 +22,16 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
   const legalPagesTsxPath = path.join(websiteRoot, 'src', 'pages', 'LegalPages.tsx');
   const footerTsxPath = path.join(websiteRoot, 'src', 'components', 'Footer.tsx');
   const navbarTsxPath = path.join(websiteRoot, 'src', 'components', 'Navbar.tsx');
+  const homePageTsxPath = path.join(websiteRoot, 'src', 'pages', 'HomePage.tsx');
+  const productPageTsxPath = path.join(websiteRoot, 'src', 'pages', 'ProductPage.tsx');
+  const howItWorksPageTsxPath = path.join(websiteRoot, 'src', 'pages', 'HowItWorksPage.tsx');
+  const featuresPageTsxPath = path.join(websiteRoot, 'src', 'pages', 'FeaturesPage.tsx');
+  const pricingPageTsxPath = path.join(websiteRoot, 'src', 'pages', 'PricingPage.tsx');
+  const appTsxPath = path.join(websiteRoot, 'src', 'App.tsx');
 
-  it('verifies public/privacy/index.html exists and is valid standalone zero-JS HTML', () => {
+  it('verifies public/privacy/index.html and privacy.html exist as standalone zero-JS HTML', () => {
     assert.ok(fs.existsSync(privacyHtmlPath), 'privacy/index.html must exist');
+    assert.ok(fs.existsSync(privacyFlatHtmlPath), 'privacy.html must exist');
     const content = fs.readFileSync(privacyHtmlPath, 'utf-8');
 
     // HTTP / HTML structure
@@ -54,8 +64,9 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     assert.match(content, /90[- ]day/i, 'Must disclose data retention window');
   });
 
-  it('verifies public/terms/index.html exists and reflects non-custodial UPI platform', () => {
+  it('verifies public/terms/index.html and terms.html exist and reflect non-custodial UPI platform', () => {
     assert.ok(fs.existsSync(termsHtmlPath), 'terms/index.html must exist');
+    assert.ok(fs.existsSync(termsFlatHtmlPath), 'terms.html must exist');
     const content = fs.readFileSync(termsHtmlPath, 'utf-8');
 
     assert.match(content, /<!DOCTYPE html>/i);
@@ -84,20 +95,67 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     assert.ok(sitemap.includes('https://rgsledger.rajivsharma.online/terms'), 'sitemap.xml must index /terms');
   });
 
-  it('verifies vercel.json and _redirects route /privacy and /terms directly to static pages', () => {
+  it('verifies vercel.json defines redirects for /login, /signup, and rewrites for /privacy, /terms', () => {
     const vercelConfig = JSON.parse(fs.readFileSync(vercelJsonPath, 'utf-8'));
+    assert.ok(Array.isArray(vercelConfig.redirects), 'vercel.json must define redirects');
+    
+    const loginRedirect = vercelConfig.redirects.find((r: { source: string }) => r.source === '/login');
+    assert.ok(loginRedirect, 'Must redirect /login');
+    assert.equal(loginRedirect.destination, 'https://app.rgsledger.rajivsharma.online/login');
+
+    const signupRedirect = vercelConfig.redirects.find((r: { source: string }) => r.source === '/signup');
+    assert.ok(signupRedirect, 'Must redirect /signup');
+    assert.equal(signupRedirect.destination, 'https://app.rgsledger.rajivsharma.online/signup');
+
     assert.ok(Array.isArray(vercelConfig.rewrites), 'vercel.json must define rewrites');
     const privacyRewrite = vercelConfig.rewrites.find((r: { source: string }) => r.source === '/privacy');
     assert.ok(privacyRewrite, 'Must have /privacy rewrite');
-    assert.equal(privacyRewrite.destination, '/privacy/index.html');
 
     const termsRewrite = vercelConfig.rewrites.find((r: { source: string }) => r.source === '/terms');
     assert.ok(termsRewrite, 'Must have /terms rewrite');
-    assert.equal(termsRewrite.destination, '/terms/index.html');
 
     const redirects = fs.readFileSync(redirectsPath, 'utf-8');
-    assert.match(redirects, /\/privacy\s+\/privacy\/index\.html\s+200/);
-    assert.match(redirects, /\/terms\s+\/terms\/index\.html\s+200/);
+    assert.match(redirects, /\/login\s+https:\/\/app\.rgsledger\.rajivsharma\.online\/login\s+302/);
+    assert.match(redirects, /\/signup\s+https:\/\/app\.rgsledger\.rajivsharma\.online\/signup\s+302/);
+    assert.match(redirects, /\/privacy\s+\/privacy\.html\s+200/);
+    assert.match(redirects, /\/terms\s+\/terms\.html\s+200/);
+  });
+
+  it('verifies authentication helper functions preserve query parameters', () => {
+    const loginUrl = getMerchantLoginUrl('?returnTo=/settings&theme=dark');
+    assert.ok(loginUrl.includes('/login?returnTo=/settings&theme=dark'));
+
+    const signupUrl = getMerchantSignupUrl('?plan=pro');
+    assert.ok(signupUrl.includes('/signup?plan=pro'));
+  });
+
+  it('verifies App.tsx enforces client-side redirects and does not host auth forms', () => {
+    const appContent = fs.readFileSync(appTsxPath, 'utf-8');
+    assert.ok(!appContent.includes('<AuthPage'), 'Public website App.tsx must not render AuthPage');
+    assert.ok(!appContent.includes('<OnboardingWizard'), 'Public website App.tsx must not render OnboardingWizard');
+    assert.ok(appContent.includes('getMerchantLoginUrl'), 'App.tsx must use getMerchantLoginUrl');
+    assert.ok(appContent.includes('getMerchantSignupUrl'), 'App.tsx must use getMerchantSignupUrl');
+  });
+
+  it('verifies every CTA across pages points to merchant application signup or login', () => {
+    const navbarContent = fs.readFileSync(navbarTsxPath, 'utf-8');
+    assert.ok(navbarContent.includes('getMerchantLoginUrl'), 'Navbar must link Sign In to merchant login');
+    assert.ok(navbarContent.includes('getMerchantSignupUrl'), 'Navbar must link Get Started to merchant signup');
+
+    const homeContent = fs.readFileSync(homePageTsxPath, 'utf-8');
+    assert.ok(homeContent.includes('getMerchantSignupUrl()'), 'HomePage CTAs must link to merchant signup');
+
+    const productContent = fs.readFileSync(productPageTsxPath, 'utf-8');
+    assert.ok(productContent.includes('getMerchantSignupUrl()'), 'ProductPage CTA must link to merchant signup');
+
+    const howItWorksContent = fs.readFileSync(howItWorksPageTsxPath, 'utf-8');
+    assert.ok(howItWorksContent.includes('getMerchantSignupUrl()'), 'HowItWorks CTA must link to merchant signup');
+
+    const featuresContent = fs.readFileSync(featuresPageTsxPath, 'utf-8');
+    assert.ok(featuresContent.includes('getMerchantSignupUrl()'), 'Features CTA must link to merchant signup');
+
+    const pricingContent = fs.readFileSync(pricingPageTsxPath, 'utf-8');
+    assert.ok(pricingContent.includes('getMerchantSignupUrl()'), 'Pricing CTA must link to merchant signup');
   });
 
   it('verifies React LegalPages component has matching Google Limited Use disclosure', () => {
@@ -116,25 +174,27 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     );
   });
 
-  it('verifies Footer and Navbar use semantic visible <a> links for privacy and terms', () => {
-    const footerContent = fs.readFileSync(footerTsxPath, 'utf-8');
-    assert.ok(footerContent.includes('href="/privacy"'), 'Footer must have semantic <a href="/privacy">');
-    assert.ok(footerContent.includes('href="/terms"'), 'Footer must have semantic <a href="/terms">');
-
-    const navbarContent = fs.readFileSync(navbarTsxPath, 'utf-8');
-    assert.ok(navbarContent.includes('href={item.path}'), 'Navbar must use semantic <a href={item.path}> links');
-  });
-
-  it('verifies production build dist directory contains static privacy and terms pages', () => {
+  it('verifies production build dist directory contains static privacy, terms, and sitemap', () => {
     const distPrivacyPath = path.join(websiteRoot, 'dist', 'privacy', 'index.html');
+    const distPrivacyFlatPath = path.join(websiteRoot, 'dist', 'privacy.html');
     const distTermsPath = path.join(websiteRoot, 'dist', 'terms', 'index.html');
+    const distTermsFlatPath = path.join(websiteRoot, 'dist', 'terms.html');
+    const distSitemapPath = path.join(websiteRoot, 'dist', 'sitemap.xml');
+
     assert.ok(fs.existsSync(distPrivacyPath), 'dist/privacy/index.html must exist after build');
+    assert.ok(fs.existsSync(distPrivacyFlatPath), 'dist/privacy.html must exist after build');
     assert.ok(fs.existsSync(distTermsPath), 'dist/terms/index.html must exist after build');
+    assert.ok(fs.existsSync(distTermsFlatPath), 'dist/terms.html must exist after build');
+    assert.ok(fs.existsSync(distSitemapPath), 'dist/sitemap.xml must exist after build');
 
     const distPrivacyContent = fs.readFileSync(distPrivacyPath, 'utf-8');
     assert.match(
       distPrivacyContent,
       /adhere to the.*Google API Services User Data Policy.*including the Limited Use requirements/is
     );
+
+    const distSitemapContent = fs.readFileSync(distSitemapPath, 'utf-8');
+    assert.ok(distSitemapContent.includes('https://rgsledger.rajivsharma.online/privacy'));
+    assert.ok(distSitemapContent.includes('https://rgsledger.rajivsharma.online/terms'));
   });
 });

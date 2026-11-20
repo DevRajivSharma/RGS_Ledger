@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { APP_URLS } from '../config/urls.js';
+import { APP_URLS, getMerchantLoginUrl, getMerchantSignupUrl } from '../config/urls.js';
 
 export interface NavbarProps {
   currentPath: string;
@@ -90,11 +90,10 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
             </a>
           ) : (
             <>
-              <button
-                onClick={() => onNavigate('/login')}
+              <a
+                href={getMerchantLoginUrl()}
                 style={{
-                  background: 'none',
-                  border: 'none',
+                  textDecoration: 'none',
                   fontSize: '14px',
                   fontWeight: 600,
                   color: '#374151',
@@ -103,14 +102,14 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
                 }}
               >
                 Sign In
-              </button>
-              <button
-                onClick={() => onNavigate('/register')}
+              </a>
+              <a
+                href={getMerchantSignupUrl()}
                 style={{
+                  textDecoration: 'none',
                   padding: '8px 16px',
                   background: '#2563EB',
                   color: '#FFFFFF',
-                  border: 'none',
                   borderRadius: '6px',
                   fontSize: '13px',
                   fontWeight: 600,
@@ -118,7 +117,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
                 }}
               >
                 Get Started
-              </button>
+              </a>
             </>
           )}
         </div>
@@ -176,24 +175,20 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
             Developers Documentation ↗
           </a>
           <div style={{ display: 'flex', gap: '10px', paddingTop: '10px', borderTop: '1px solid #F3F4F6' }}>
-            <button
-              onClick={() => {
-                onNavigate('/login');
-                setMobileMenuOpen(false);
-              }}
-              style={{ flex: 1, padding: '9px', background: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+            <a
+              href={getMerchantLoginUrl()}
+              onClick={() => setMobileMenuOpen(false)}
+              style={{ flex: 1, textAlign: 'center', textDecoration: 'none', padding: '9px', background: '#F3F4F6', color: '#111827', border: '1px solid #D1D5DB', borderRadius: '6px', fontSize: '13px', fontWeight: 600 }}
             >
               Sign In
-            </button>
-            <button
-              onClick={() => {
-                onNavigate('/register');
-                setMobileMenuOpen(false);
-              }}
-              style={{ flex: 1, padding: '9px', background: '#2563EB', color: '#FFF', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+            </a>
+            <a
+              href={getMerchantSignupUrl()}
+              onClick={() => setMobileMenuOpen(false)}
+              style={{ flex: 1, textAlign: 'center', textDecoration: 'none', padding: '9px', background: '#2563EB', color: '#FFF', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600 }}
             >
               Get Started
-            </button>
+            </a>
           </div>
         </div>
       )}

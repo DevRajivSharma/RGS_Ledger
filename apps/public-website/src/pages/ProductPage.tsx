@@ -1,11 +1,11 @@
 import React from 'react';
-import { APP_URLS } from '../config/urls.js';
+import { APP_URLS, getMerchantSignupUrl } from '../config/urls.js';
 
 export interface ProductPageProps {
   onNavigate: (path: string) => void;
 }
 
-export const ProductPage: React.FC<ProductPageProps> = ({ onNavigate }) => {
+export const ProductPage: React.FC<ProductPageProps> = ({ onNavigate: _onNavigate }) => {
   const productModules = [
     {
       id: 'upi-qr',
@@ -198,12 +198,12 @@ export const ProductPage: React.FC<ProductPageProps> = ({ onNavigate }) => {
           >
             Developer Portal ↗
           </a>
-          <button
-            onClick={() => onNavigate('/register')}
-            style={{ padding: '10px 20px', background: '#334155', color: '#FFF', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
+          <a
+            href={getMerchantSignupUrl()}
+            style={{ display: 'inline-block', textDecoration: 'none', padding: '10px 20px', background: '#334155', color: '#FFF', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}
           >
             Create Account →
-          </button>
+          </a>
         </div>
       </div>
     </div>

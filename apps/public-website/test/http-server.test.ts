@@ -14,16 +14,34 @@ describe('HTTP Production Static Server Verification', () => {
   let baseUrl: string;
 
   before(async () => {
-    // Basic static web server simulating Vercel / Cloudflare Pages clean-url and static folder resolution
+    // Basic static web server simulating Vercel cleanUrls, redirects, and static folder resolution
     server = http.createServer((req, res) => {
       const urlPath = (req.url || '/').split('?')[0];
-      let filePath: string;
+      const search = (req.url || '').includes('?') ? (req.url || '').slice((req.url || '').indexOf('?')) : '';
 
+      // 1. Redirects (as configured in vercel.json)
+      if (urlPath === '/login') {
+        res.writeHead(302, { Location: `https://app.rgsledger.rajivsharma.online/login${search}` });
+        res.end();
+        return;
+      }
+      if (urlPath === '/signup' || urlPath === '/register') {
+        res.writeHead(302, { Location: `https://app.rgsledger.rajivsharma.online/signup${search}` });
+        res.end();
+        return;
+      }
+
+      // 2. Static file resolution
+      let filePath: string;
       if (urlPath === '/' || urlPath === '') {
         filePath = path.join(distDir, 'index.html');
-      } else if (urlPath === '/privacy' || urlPath === '/privacy/') {
+      } else if (urlPath === '/privacy') {
+        filePath = path.join(distDir, 'privacy.html');
+      } else if (urlPath === '/privacy/') {
         filePath = path.join(distDir, 'privacy', 'index.html');
-      } else if (urlPath === '/terms' || urlPath === '/terms/') {
+      } else if (urlPath === '/terms') {
+        filePath = path.join(distDir, 'terms.html');
+      } else if (urlPath === '/terms/') {
         filePath = path.join(distDir, 'terms', 'index.html');
       } else {
         const potentialPath = path.join(distDir, urlPath);
@@ -77,6 +95,7 @@ describe('HTTP Production Static Server Verification', () => {
   it('serves /privacy with HTTP 200 and Google Limited Use disclosure without requiring JavaScript', async () => {
     const res = await fetch(`${baseUrl}/privacy`);
     assert.equal(res.status, 200);
+    assert.ok(res.headers.get('content-type')?.includes('text/html'));
     const text = await res.text();
     assert.ok(text.includes('<!DOCTYPE html>'));
     assert.ok(text.includes('Privacy Policy — RGS Ledger'));
@@ -88,10 +107,30 @@ describe('HTTP Production Static Server Verification', () => {
   it('serves /terms with HTTP 200 and non-custodial declaration without requiring JavaScript', async () => {
     const res = await fetch(`${baseUrl}/terms`);
     assert.equal(res.status, 200);
+    assert.ok(res.headers.get('content-type')?.includes('text/html'));
     const text = await res.text();
     assert.ok(text.includes('<!DOCTYPE html>'));
     assert.ok(text.includes('Terms of Service — RGS Ledger'));
     assert.match(text, /non-custodial/i);
+  });
+
+  it('redirects /login with HTTP 302 to merchant application preserving query params', async () => {
+    const res = await fetch(`${baseUrl}/login?returnTo=/settings&theme=dark`, { redirect: 'manual' });
+    assert.equal(res.status, 302);
+    assert.equal(
+      res.headers.get('location'),
+      'https://app.rgsledger.rajivsharma.online/login?returnTo=/settings&theme=dark'
+    );
+  });
+
+  it('redirects /signup and /register with HTTP 302 to merchant application preserving query params', async () => {
+    const res1 = await fetch(`${baseUrl}/signup?plan=pro`, { redirect: 'manual' });
+    assert.equal(res1.status, 302);
+    assert.equal(res1.headers.get('location'), 'https://app.rgsledger.rajivsharma.online/signup?plan=pro');
+
+    const res2 = await fetch(`${baseUrl}/register?ref=partner1`, { redirect: 'manual' });
+    assert.equal(res2.status, 302);
+    assert.equal(res2.headers.get('location'), 'https://app.rgsledger.rajivsharma.online/signup?ref=partner1');
   });
 
   it('serves /robots.txt with HTTP 200 and points to the sitemap', async () => {
@@ -101,9 +140,13 @@ describe('HTTP Production Static Server Verification', () => {
     assert.ok(text.includes('Sitemap: https://rgsledger.rajivsharma.online/sitemap.xml'));
   });
 
-  it('serves /sitemap.xml with HTTP 200 and includes /privacy and /terms', async () => {
+  it('serves /sitemap.xml with HTTP 200 and application/xml content type', async () => {
     const res = await fetch(`${baseUrl}/sitemap.xml`);
     assert.equal(res.status, 200);
+    assert.ok(
+      res.headers.get('content-type')?.includes('application/xml') ||
+      res.headers.get('content-type')?.includes('text/xml')
+    );
     const text = await res.text();
     assert.ok(text.includes('https://rgsledger.rajivsharma.online/privacy'));
     assert.ok(text.includes('https://rgsledger.rajivsharma.online/terms'));

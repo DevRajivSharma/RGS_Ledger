@@ -1,10 +1,11 @@
 import React from 'react';
+import { getMerchantSignupUrl } from '../config/urls.js';
 
 export interface FeaturesPageProps {
   onNavigate: (path: string) => void;
 }
 
-export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onNavigate }) => {
+export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onNavigate: _onNavigate }) => {
   const featureGroups = [
     {
       title: '1. Payment Request Management',
@@ -150,13 +151,14 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onNavigate }) => {
       </div>
 
       <div style={{ marginTop: '50px', textAlign: 'center' }}>
-        <button
-          onClick={() => onNavigate('/register')}
+        <a
+          href={getMerchantSignupUrl()}
           style={{
+            display: 'inline-block',
+            textDecoration: 'none',
             padding: '12px 28px',
             background: '#2563EB',
             color: '#FFF',
-            border: 'none',
             borderRadius: '8px',
             fontSize: '15px',
             fontWeight: 700,
@@ -164,7 +166,7 @@ export const FeaturesPage: React.FC<FeaturesPageProps> = ({ onNavigate }) => {
           }}
         >
           Start Using RGS Ledger →
-        </button>
+        </a>
       </div>
     </div>
   );
