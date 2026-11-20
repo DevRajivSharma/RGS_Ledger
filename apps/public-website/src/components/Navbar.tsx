@@ -40,12 +40,15 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
         {/* Desktop Navigation Links */}
         <div style={{ display: 'none', alignItems: 'center', gap: '22px' }} className="desktop-nav">
           {navLinks.map((item) => (
-            <button
+            <a
               key={item.path}
-              onClick={() => onNavigate(item.path)}
+              href={item.path}
+              onClick={(e) => {
+                e.preventDefault();
+                onNavigate(item.path);
+              }}
               style={{
-                background: 'none',
-                border: 'none',
+                textDecoration: 'none',
                 fontSize: '14px',
                 fontWeight: currentPath === item.path ? 700 : 500,
                 color: currentPath === item.path ? '#2563EB' : '#4B5563',
@@ -55,7 +58,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
               }}
             >
               {item.label}
-            </button>
+            </a>
           ))}
           {/* External Developer Portal Link */}
           <a
@@ -143,16 +146,17 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
       {mobileMenuOpen && (
         <div style={{ background: '#FFFFFF', borderTop: '1px solid #E5E7EB', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: '12px' }}>
           {navLinks.map((item) => (
-            <button
+            <a
               key={item.path}
-              onClick={() => {
+              href={item.path}
+              onClick={(e) => {
+                e.preventDefault();
                 onNavigate(item.path);
                 setMobileMenuOpen(false);
               }}
               style={{
                 textAlign: 'left',
-                background: 'none',
-                border: 'none',
+                textDecoration: 'none',
                 fontSize: '15px',
                 fontWeight: currentPath === item.path ? 700 : 500,
                 color: currentPath === item.path ? '#2563EB' : '#374151',
@@ -161,7 +165,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
               }}
             >
               {item.label}
-            </button>
+            </a>
           ))}
           <a
             href={APP_URLS.developerPortal}

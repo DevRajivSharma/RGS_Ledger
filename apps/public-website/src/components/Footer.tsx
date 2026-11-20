@@ -97,34 +97,58 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
             </h4>
             <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '13px' }}>
               <li>
-                <button onClick={() => onNavigate('/terms')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
-                  Terms of Service (Draft)
-                </button>
+                <a
+                  href="/terms"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/terms'); }}
+                  style={{ color: '#9CA3AF', textDecoration: 'none' }}
+                >
+                  Terms of Service
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('/privacy')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
-                  Privacy Policy
-                </button>
+                <a
+                  href="/privacy"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/privacy'); }}
+                  style={{ color: '#60A5FA', fontWeight: 600, textDecoration: 'none' }}
+                >
+                  🔒 Privacy Policy
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('/security')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                <a
+                  href="/security"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/security'); }}
+                  style={{ color: '#9CA3AF', textDecoration: 'none' }}
+                >
                   Security & Encryption
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('/data-retention')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                <a
+                  href="/data-retention"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/data-retention'); }}
+                  style={{ color: '#9CA3AF', textDecoration: 'none' }}
+                >
                   Data Retention Policy
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('/acceptable-use')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                <a
+                  href="/acceptable-use"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/acceptable-use'); }}
+                  style={{ color: '#9CA3AF', textDecoration: 'none' }}
+                >
                   Acceptable Use Policy
-                </button>
+                </a>
               </li>
               <li>
-                <button onClick={() => onNavigate('/contact')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                <a
+                  href="/contact"
+                  onClick={(e) => { e.preventDefault(); onNavigate('/contact'); }}
+                  style={{ color: '#9CA3AF', textDecoration: 'none' }}
+                >
                   Contact Support
-                </button>
+                </a>
               </li>
             </ul>
           </div>
@@ -139,10 +163,15 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
         {/* Bottom Bar */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '12px', fontSize: '12px', borderTop: '1px solid #1F2937', paddingTop: '20px' }}>
           <div>
-            &copy; {new Date().getFullYear()} RGS Ledger. All rights reserved. Early Access Beta.
+            &copy; {new Date().getFullYear()} RGS Ledger. All rights reserved. Zero-Custody UPI Payment Platform.
           </div>
-          <div style={{ display: 'flex', gap: '16px' }}>
+          <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+            <a href="/privacy" onClick={(e) => { e.preventDefault(); onNavigate('/privacy'); }} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Privacy Policy</a>
+            <span>&bull;</span>
+            <a href="/terms" onClick={(e) => { e.preventDefault(); onNavigate('/terms'); }} style={{ color: '#9CA3AF', textDecoration: 'underline' }}>Terms of Service</a>
+            <span>&bull;</span>
             <span style={{ color: '#6B7280' }}>NPCI UPI URI Spec 1.6</span>
+            <span>&bull;</span>
             <span style={{ color: '#6B7280' }}>Dual-Source Evidence Policy</span>
           </div>
         </div>

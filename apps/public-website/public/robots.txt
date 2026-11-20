@@ -2,4 +2,4 @@ User-agent: *
 Allow: /
 Disallow: /onboarding/
 
-Sitemap: https://rgsledger.com/sitemap.xml
+Sitemap: https://rgsledger.rajivsharma.online/sitemap.xml
