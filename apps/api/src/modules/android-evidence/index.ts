@@ -18,7 +18,6 @@ import {
 import {
   AndroidDeviceModel,
   DevicePairingCodeModel,
-  MerchantModel,
   EvidenceTemplateModel,
   MerchantBankAccountModel,
   PaymentEvidenceModel,

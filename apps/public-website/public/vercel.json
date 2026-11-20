@@ -1,23 +1,6 @@
 {
   "framework": "vite",
   "cleanUrls": true,
-  "redirects": [
-    {
-      "source": "/login",
-      "destination": "https://app.rgsledger.rajivsharma.online/login",
-      "permanent": false
-    },
-    {
-      "source": "/signup",
-      "destination": "https://app.rgsledger.rajivsharma.online/signup",
-      "permanent": false
-    },
-    {
-      "source": "/register",
-      "destination": "https://app.rgsledger.rajivsharma.online/signup",
-      "permanent": false
-    }
-  ],
   "rewrites": [
     {
       "source": "/privacy",

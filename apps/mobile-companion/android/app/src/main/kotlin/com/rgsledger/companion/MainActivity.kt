@@ -309,8 +309,9 @@ class MainActivity : Activity() {
         // Device Name Input
         val nameLabel = createInputLabel("DEVICE NAME")
         formCard.addView(nameLabel)
+        val defaultDevName = "${android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${android.os.Build.MODEL} - Companion"
         val nameInput = EditText(this).apply {
-            setText("OnePlus Nord CE 2 - Companion")
+            setText(defaultDevName)
             setTextColor(Color.WHITE)
             setBackgroundColor(Color.parseColor("#1E293B"))
             setPadding(28, 24, 28, 24)
@@ -328,7 +329,7 @@ class MainActivity : Activity() {
         }
         formCard.addView(urlInput)
 
-        // Error Feedback Label
+        // Error / Status Feedback Label
         val feedbackView = TextView(this).apply {
             textSize = 13f
             setTextColor(Color.parseColor("#EF4444"))
@@ -336,6 +337,24 @@ class MainActivity : Activity() {
             setPadding(0, 16, 0, 0)
         }
         formCard.addView(feedbackView)
+
+        // Test API Connection Button
+        val testConnButton = Button(this).apply {
+            text = "Test API Connection (/health)"
+            setBackgroundColor(Color.parseColor("#334155"))
+            setTextColor(Color.parseColor("#93C5FD"))
+            typeface = Typeface.DEFAULT_BOLD
+            setPadding(24, 20, 24, 20)
+            setOnClickListener {
+                val url = urlInput.text.toString().trim()
+                checkApiHealth(url, feedbackView)
+            }
+        }
+        val testConnParams = LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT,
+            LinearLayout.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = 16 }
+        formCard.addView(testConnButton, testConnParams)
 
         // Pair Button
         val pairButton = Button(this).apply {
@@ -366,54 +385,53 @@ class MainActivity : Activity() {
         val buttonParams = LinearLayout.LayoutParams(
             LinearLayout.LayoutParams.MATCH_PARENT,
             LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = 32 }
+        ).apply { topMargin = 16 }
         formCard.addView(pairButton, buttonParams)
 
-        // Test Connection Button
-        val testConnButton = Button(this).apply {
-            text = "Test Server Connection (/health)"
-            setBackgroundColor(Color.parseColor("#334155"))
-            setTextColor(Color.parseColor("#CBD5E1"))
-            setPadding(24, 20, 24, 20)
-            setOnClickListener {
-                val url = urlInput.text.toString().trim()
-                feedbackView.setTextColor(Color.parseColor("#94A3B8"))
-                feedbackView.text = "Testing connectivity to $url/health..."
-                feedbackView.visibility = View.VISIBLE
+        rootContainer.addView(formCard)
+    }
 
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        val req = Request.Builder()
-                            .url("${url.trimEnd('/')}/health")
-                            .get()
-                            .build()
-                        val res = httpClient.newCall(req).execute()
-                        val body = res.body?.string() ?: ""
-                        withContext(Dispatchers.Main) {
-                            if (res.isSuccessful) {
-                                feedbackView.setTextColor(Color.parseColor("#22C55E"))
-                                feedbackView.text = "Connection Successful! ($url is reachable, HTTP ${res.code})"
-                            } else {
-                                feedbackView.setTextColor(Color.parseColor("#EF4444"))
-                                feedbackView.text = "Server responded with HTTP ${res.code}: $body"
-                            }
-                        }
-                    } catch (e: Exception) {
-                        withContext(Dispatchers.Main) {
-                            feedbackView.setTextColor(Color.parseColor("#EF4444"))
-                            feedbackView.text = "Connection Failed: ${e.message}"
-                        }
+    private fun checkApiHealth(baseUrl: String, feedbackView: TextView) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val cleanUrl = baseUrl.trim().trimEnd('/')
+                if (cleanUrl.isBlank()) {
+                    withContext(Dispatchers.Main) {
+                        feedbackView.text = "Please enter an API Base URL."
+                        feedbackView.setTextColor(Color.parseColor("#EF4444"))
+                        feedbackView.visibility = View.VISIBLE
                     }
+                    return@launch
+                }
+
+                val request = Request.Builder()
+                    .url("$cleanUrl/health")
+                    .get()
+                    .build()
+
+                val response = httpClient.newCall(request).execute()
+                val isHealthy = response.isSuccessful
+                val code = response.code
+
+                withContext(Dispatchers.Main) {
+                    if (isHealthy) {
+                        feedbackView.text = "✓ API is reachable and healthy (HTTP $code)"
+                        feedbackView.setTextColor(Color.parseColor("#22C55E"))
+                        feedbackView.visibility = View.VISIBLE
+                    } else {
+                        feedbackView.text = "API returned HTTP $code from $cleanUrl"
+                        feedbackView.setTextColor(Color.parseColor("#EF4444"))
+                        feedbackView.visibility = View.VISIBLE
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    feedbackView.text = "Cannot reach API: ${e.message}"
+                    feedbackView.setTextColor(Color.parseColor("#EF4444"))
+                    feedbackView.visibility = View.VISIBLE
                 }
             }
         }
-        val testConnParams = LinearLayout.LayoutParams(
-            LinearLayout.LayoutParams.MATCH_PARENT,
-            LinearLayout.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = 16 }
-        formCard.addView(testConnButton, testConnParams)
-
-        rootContainer.addView(formCard)
     }
 
     private fun executePairing(
@@ -425,18 +443,20 @@ class MainActivity : Activity() {
     ) {
         scope.launch(Dispatchers.IO) {
             try {
-                prefs.apiBaseUrl = baseUrl
+                val cleanBaseUrl = baseUrl.trim().trimEnd('/')
+                prefs.apiBaseUrl = cleanBaseUrl
 
+                val fingerprint = "device_${android.os.Build.MANUFACTURER}_${android.os.Build.MODEL}_${System.currentTimeMillis()}"
                 val payload = JsonObject().apply {
                     addProperty("pairingCode", code)
                     addProperty("deviceName", devName)
-                    addProperty("deviceFingerprint", "oneplus_nord_${System.currentTimeMillis()}")
+                    addProperty("deviceFingerprint", fingerprint)
                     addProperty("androidVersion", "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})")
                 }
 
                 val body = payload.toString().toRequestBody("application/json".toMediaType())
                 val request = Request.Builder()
-                    .url("${baseUrl.trimEnd('/')}/api/v1/devices/pair")
+                    .url("$cleanBaseUrl/api/v1/devices/pair")
                     .post(body)
                     .build()
 
@@ -532,6 +552,12 @@ class MainActivity : Activity() {
         }
         card.addView(statsTextView)
 
+        // Sync & Connection Buttons
+        val btnRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            weightSum = 2f
+        }
+
         val syncButton = Button(this).apply {
             text = "Sync Now"
             setBackgroundColor(Color.parseColor("#2563EB"))
@@ -540,7 +566,33 @@ class MainActivity : Activity() {
                 triggerSync()
             }
         }
-        card.addView(syncButton)
+        val syncParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            rightMargin = 8
+        }
+        btnRow.addView(syncButton, syncParams)
+
+        val healthStatusView = TextView(this).apply {
+            textSize = 12f
+            setTextColor(Color.parseColor("#94A3B8"))
+            visibility = View.GONE
+            setPadding(0, 12, 0, 0)
+        }
+
+        val checkConnBtn = Button(this).apply {
+            text = "Check API"
+            setBackgroundColor(Color.parseColor("#334155"))
+            setTextColor(Color.parseColor("#93C5FD"))
+            setOnClickListener {
+                checkApiHealth(prefs.apiBaseUrl, healthStatusView)
+            }
+        }
+        val checkConnParams = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply {
+            leftMargin = 8
+        }
+        btnRow.addView(checkConnBtn, checkConnParams)
+
+        card.addView(btnRow)
+        card.addView(healthStatusView)
 
         rootContainer.addView(card)
 

@@ -9,7 +9,8 @@ const isLocalhost = isBrowser && (
   window.location.hostname === '127.0.0.1' ||
   window.location.hostname.endsWith('.local')
 );
-const isProd = (import.meta as any).env?.PROD || (isBrowser && !isLocalhost);
+const isLocalDev = isLocalhost || (typeof process !== 'undefined' && process.env?.NODE_ENV === 'development');
+const isProd = (import.meta as any).env?.PROD || !isLocalDev;
 
 export const APP_URLS = {
   website: (import.meta as any).env?.VITE_WEBSITE_URL || (isProd ? 'https://rgsledger.rajivsharma.online' : 'http://localhost:3000'),
@@ -21,23 +22,55 @@ export const APP_URLS = {
 };
 
 /**
- * Returns the destination URL for Merchant Portal Login, preserving query parameters.
+ * Query parameters supported by the merchant dashboard root page (e.g., OAuth callbacks).
+ * Unsupported parameters are omitted to avoid introducing unsupported parameters.
+ */
+const SUPPORTED_MERCHANT_PARAMS = new Set(['status', 'email', 'error']);
+
+function sanitizeMerchantParams(searchParams?: string): string {
+  if (!searchParams) return '';
+  const queryString = searchParams.startsWith('?') ? searchParams.slice(1) : searchParams;
+  if (!queryString) return '';
+
+  try {
+    const parsed = new URLSearchParams(queryString);
+    const filtered = new URLSearchParams();
+    for (const [key, value] of parsed.entries()) {
+      if (SUPPORTED_MERCHANT_PARAMS.has(key)) {
+        filtered.set(key, value);
+      }
+    }
+    const filteredStr = filtered.toString();
+    return filteredStr ? `?${filteredStr}` : '';
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * Returns the destination URL for Merchant Portal Login/Sign In.
+ * Points to the single root route of the merchant application (https://app.rgsledger.rajivsharma.online/).
  */
 export const getMerchantLoginUrl = (searchParams?: string): string => {
   const base = APP_URLS.merchantDashboard.replace(/\/+$/, '');
-  const search = searchParams !== undefined
-    ? (searchParams.startsWith('?') || searchParams === '' ? searchParams : `?${searchParams}`)
-    : (typeof window !== 'undefined' ? window.location.search : '');
-  return `${base}/login${search}`;
+  const search = sanitizeMerchantParams(
+    searchParams !== undefined
+      ? searchParams
+      : (typeof window !== 'undefined' ? window.location.search : '')
+  );
+  return `${base}/${search}`;
 };
 
 /**
- * Returns the destination URL for Merchant Portal Sign Up / Registration, preserving query parameters.
+ * Returns the destination URL for Merchant Portal Sign Up / Registration.
+ * Points to the single root route of the merchant application (https://app.rgsledger.rajivsharma.online/).
  */
 export const getMerchantSignupUrl = (searchParams?: string): string => {
   const base = APP_URLS.merchantDashboard.replace(/\/+$/, '');
-  const search = searchParams !== undefined
-    ? (searchParams.startsWith('?') || searchParams === '' ? searchParams : `?${searchParams}`)
-    : (typeof window !== 'undefined' ? window.location.search : '');
-  return `${base}/signup${search}`;
+  const search = sanitizeMerchantParams(
+    searchParams !== undefined
+      ? searchParams
+      : (typeof window !== 'undefined' ? window.location.search : '')
+  );
+  return `${base}/${search}`;
 };

@@ -95,17 +95,16 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     assert.ok(sitemap.includes('https://rgsledger.rajivsharma.online/terms'), 'sitemap.xml must index /terms');
   });
 
-  it('verifies vercel.json defines redirects for /login, /signup, and rewrites for /privacy, /terms', () => {
+  it('verifies vercel.json defines rewrites for /privacy, /terms and has no unintended redirects', () => {
     const vercelConfig = JSON.parse(fs.readFileSync(vercelJsonPath, 'utf-8'));
-    assert.ok(Array.isArray(vercelConfig.redirects), 'vercel.json must define redirects');
     
-    const loginRedirect = vercelConfig.redirects.find((r: { source: string }) => r.source === '/login');
-    assert.ok(loginRedirect, 'Must redirect /login');
-    assert.equal(loginRedirect.destination, 'https://app.rgsledger.rajivsharma.online/login');
-
-    const signupRedirect = vercelConfig.redirects.find((r: { source: string }) => r.source === '/signup');
-    assert.ok(signupRedirect, 'Must redirect /signup');
-    assert.equal(signupRedirect.destination, 'https://app.rgsledger.rajivsharma.online/signup');
+    // Unintended redirects targeting nonexistent merchant routes must not exist
+    if (vercelConfig.redirects) {
+      const badLoginRedirect = vercelConfig.redirects.find((r: { destination: string }) => r.destination.includes('/login'));
+      const badSignupRedirect = vercelConfig.redirects.find((r: { destination: string }) => r.destination.includes('/signup'));
+      assert.ok(!badLoginRedirect, 'vercel.json must not redirect to nonexistent /login');
+      assert.ok(!badSignupRedirect, 'vercel.json must not redirect to nonexistent /signup');
+    }
 
     assert.ok(Array.isArray(vercelConfig.rewrites), 'vercel.json must define rewrites');
     const privacyRewrite = vercelConfig.rewrites.find((r: { source: string }) => r.source === '/privacy');
@@ -115,18 +114,36 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     assert.ok(termsRewrite, 'Must have /terms rewrite');
 
     const redirects = fs.readFileSync(redirectsPath, 'utf-8');
-    assert.match(redirects, /\/login\s+https:\/\/app\.rgsledger\.rajivsharma\.online\/login\s+302/);
-    assert.match(redirects, /\/signup\s+https:\/\/app\.rgsledger\.rajivsharma\.online\/signup\s+302/);
+    assert.ok(!redirects.includes('/login'), '_redirects must not contain redirects targeting nonexistent /login');
+    assert.ok(!redirects.includes('/signup'), '_redirects must not contain redirects targeting nonexistent /signup');
+    assert.ok(!redirects.includes('/register'), '_redirects must not contain redirects targeting nonexistent /register');
     assert.match(redirects, /\/privacy\s+\/privacy\.html\s+200/);
     assert.match(redirects, /\/terms\s+\/terms\.html\s+200/);
   });
 
-  it('verifies authentication helper functions preserve query parameters', () => {
-    const loginUrl = getMerchantLoginUrl('?returnTo=/settings&theme=dark');
-    assert.ok(loginUrl.includes('/login?returnTo=/settings&theme=dark'));
+  it('verifies authentication helper functions point to merchant root and filter unsupported query params', () => {
+    // getMerchantLoginUrl and getMerchantSignupUrl must return the merchant dashboard root
+    const loginUrl = getMerchantLoginUrl();
+    assert.equal(loginUrl, 'https://app.rgsledger.rajivsharma.online/');
 
-    const signupUrl = getMerchantSignupUrl('?plan=pro');
-    assert.ok(signupUrl.includes('/signup?plan=pro'));
+    const signupUrl = getMerchantSignupUrl();
+    assert.equal(signupUrl, 'https://app.rgsledger.rajivsharma.online/');
+
+    // Unsupported query parameters must be omitted
+    const loginWithUnsupported = getMerchantLoginUrl('?returnTo=/settings&theme=dark');
+    assert.equal(loginWithUnsupported, 'https://app.rgsledger.rajivsharma.online/');
+
+    const signupWithUnsupported = getMerchantSignupUrl('?plan=pro');
+    assert.equal(signupWithUnsupported, 'https://app.rgsledger.rajivsharma.online/');
+
+    // Supported parameters (e.g. OAuth callback) must be preserved
+    const oauthUrl = getMerchantLoginUrl('?status=connected&email=merchant@example.com');
+    assert.ok(oauthUrl.includes('status=connected'));
+    assert.ok(oauthUrl.includes('merchant%40example.com'));
+
+    // Neither helper must point to nonexistent /login or /signup
+    assert.ok(!loginUrl.includes('/login'), 'getMerchantLoginUrl must not point to nonexistent /login');
+    assert.ok(!signupUrl.includes('/signup'), 'getMerchantSignupUrl must not point to nonexistent /signup');
   });
 
   it('verifies App.tsx enforces client-side redirects and does not host auth forms', () => {
@@ -134,7 +151,8 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     assert.ok(!appContent.includes('<AuthPage'), 'Public website App.tsx must not render AuthPage');
     assert.ok(!appContent.includes('<OnboardingWizard'), 'Public website App.tsx must not render OnboardingWizard');
     assert.ok(appContent.includes('getMerchantLoginUrl'), 'App.tsx must use getMerchantLoginUrl');
-    assert.ok(appContent.includes('getMerchantSignupUrl'), 'App.tsx must use getMerchantSignupUrl');
+    assert.ok(!appContent.includes("navigateTo('/login')"), 'App.tsx must not navigate to /login');
+    assert.ok(!appContent.includes("navigateTo('/signup')"), 'App.tsx must not navigate to /signup');
   });
 
   it('verifies every CTA across pages points to merchant application signup or login', () => {

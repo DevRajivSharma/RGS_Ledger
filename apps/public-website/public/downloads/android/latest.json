@@ -7,9 +7,9 @@
   "packageName": "com.rgsledger.companion",
   "apkDownloadUrl": "/downloads/android/rgs-companion-release.apk",
   "apkVersionedUrl": "/downloads/android/rgs-companion-v0.1.0.apk",
-  "fileSizeBytes": 3298054,
+  "fileSizeBytes": 3299757,
   "fileSizeFormatted": "3.15 MB",
-  "sha256": "75164e31f37b471d14977026d248fee5919bd4dd9c0ae4e0e4712f7981d97478",
+  "sha256": "40195a72ae99744fd49e3a5bedab0fdad39e8dc5e3d1b893ad7b44d506357075",
   "certificateFingerprintSha256": "c9240b7b9ce4a79dcc62ce821477f56026c74f136138b7581e16e219e47a34b2",
   "releaseNotes": [
     "Initial public release of the RGS Ledger Android Companion.",

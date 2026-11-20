@@ -19,19 +19,7 @@ describe('HTTP Production Static Server Verification', () => {
       const urlPath = (req.url || '/').split('?')[0];
       const search = (req.url || '').includes('?') ? (req.url || '').slice((req.url || '').indexOf('?')) : '';
 
-      // 1. Redirects (as configured in vercel.json)
-      if (urlPath === '/login') {
-        res.writeHead(302, { Location: `https://app.rgsledger.rajivsharma.online/login${search}` });
-        res.end();
-        return;
-      }
-      if (urlPath === '/signup' || urlPath === '/register') {
-        res.writeHead(302, { Location: `https://app.rgsledger.rajivsharma.online/signup${search}` });
-        res.end();
-        return;
-      }
-
-      // 2. Static file resolution
+      // Static file resolution & rewrites (as configured in vercel.json)
       let filePath: string;
       if (urlPath === '/' || urlPath === '') {
         filePath = path.join(distDir, 'index.html');
@@ -114,23 +102,24 @@ describe('HTTP Production Static Server Verification', () => {
     assert.match(text, /non-custodial/i);
   });
 
-  it('redirects /login with HTTP 302 to merchant application preserving query params', async () => {
-    const res = await fetch(`${baseUrl}/login?returnTo=/settings&theme=dark`, { redirect: 'manual' });
-    assert.equal(res.status, 302);
-    assert.equal(
-      res.headers.get('location'),
-      'https://app.rgsledger.rajivsharma.online/login?returnTo=/settings&theme=dark'
-    );
+  it('serves SPA fallback index.html with HTTP 200 for /login without unintended redirects', async () => {
+    const res = await fetch(`${baseUrl}/login`, { redirect: 'manual' });
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.ok(text.includes('<!DOCTYPE html>'));
+    assert.ok(text.includes('RGS Ledger'));
   });
 
-  it('redirects /signup and /register with HTTP 302 to merchant application preserving query params', async () => {
-    const res1 = await fetch(`${baseUrl}/signup?plan=pro`, { redirect: 'manual' });
-    assert.equal(res1.status, 302);
-    assert.equal(res1.headers.get('location'), 'https://app.rgsledger.rajivsharma.online/signup?plan=pro');
+  it('serves SPA fallback index.html with HTTP 200 for /signup and /register without unintended redirects', async () => {
+    const res1 = await fetch(`${baseUrl}/signup`, { redirect: 'manual' });
+    assert.equal(res1.status, 200);
+    const text1 = await res1.text();
+    assert.ok(text1.includes('<!DOCTYPE html>'));
 
-    const res2 = await fetch(`${baseUrl}/register?ref=partner1`, { redirect: 'manual' });
-    assert.equal(res2.status, 302);
-    assert.equal(res2.headers.get('location'), 'https://app.rgsledger.rajivsharma.online/signup?ref=partner1');
+    const res2 = await fetch(`${baseUrl}/register`, { redirect: 'manual' });
+    assert.equal(res2.status, 200);
+    const text2 = await res2.text();
+    assert.ok(text2.includes('<!DOCTYPE html>'));
   });
 
   it('serves /robots.txt with HTTP 200 and points to the sitemap', async () => {

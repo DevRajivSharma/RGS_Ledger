@@ -1,5 +1,5 @@
 import crypto from 'crypto';
-import { PaymentLinkModel, PaymentRequestModel, MerchantModel, MerchantBankAccountModel, AuditLogModel, findMerchantByIdDefensive } from '../../database/models.js';
+import { PaymentLinkModel, PaymentRequestModel, MerchantBankAccountModel, AuditLogModel, findMerchantByIdDefensive } from '../../database/models.js';
 import { CreatePaymentLinkSchema, InitiateLinkPaymentSchema } from '@rgs-ledger/validation';
 import { PaymentLinkStatus, PaymentStatus } from '@rgs-ledger/shared-types';
 import { PaymentLinkDto, PublicPaymentLinkDetails } from '@rgs-ledger/api-contracts';

@@ -81,7 +81,7 @@ class EvidenceSyncWorker(
         val requestBody = jsonBody.toRequestBody("application/json".toMediaType())
 
         val request = Request.Builder()
-            .url("${prefs.apiBaseUrl}/api/v1/devices/evidence")
+            .url("${prefs.apiBaseUrl.trimEnd('/')}/api/v1/devices/evidence")
             .header("Authorization", "Bearer ${prefs.deviceToken}")
             .post(requestBody)
             .build()

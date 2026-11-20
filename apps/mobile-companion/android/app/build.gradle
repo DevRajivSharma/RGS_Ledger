@@ -12,6 +12,12 @@ android {
         buildConfig = true
     }
 
+    def signingPropsFile = rootProject.file('release-signing.properties')
+    def signingProps = new Properties()
+    if (signingPropsFile.exists()) {
+        signingPropsFile.withInputStream { stream -> signingProps.load(stream) }
+    }
+
     defaultConfig {
         applicationId "com.rgsledger.companion"
         minSdk 26
@@ -27,11 +33,6 @@ android {
             // Default Android debug signing
         }
         release {
-            def signingPropsFile = rootProject.file('release-signing.properties')
-            def signingProps = new Properties()
-            if (signingPropsFile.exists()) {
-                signingPropsFile.withInputStream { stream -> signingProps.load(stream) }
-            }
 
             def rawPath = System.getenv("ANDROID_KEYSTORE_PATH") ?:
                           signingProps.getProperty("RGS_RELEASE_STORE_FILE") ?:
@@ -65,13 +66,25 @@ android {
 
     buildTypes {
         debug {
-            buildConfigField "String", "DEFAULT_API_URL", "\"http://10.0.2.2:4000\""
+            def devApiUrl = System.getenv("RGS_DEV_API_URL") ?:
+                            (project.hasProperty("RGS_DEV_API_URL") ? project.property("RGS_DEV_API_URL") : null) ?:
+                            "https://api.rgsledger.rajivsharma.online"
+            buildConfigField "String", "DEFAULT_API_URL", "\"${devApiUrl.trim().replaceAll('/+$', '')}\""
             signingConfig signingConfigs.debug
         }
         release {
-            def prodApiUrl = System.getenv("RGS_API_URL") ?:
-                             (project.hasProperty("RGS_API_URL") ? project.property("RGS_API_URL") : null) ?:
-                             "https://api.rgsledger.rajivsharma.online"
+            def candidateProdUrl = System.getenv("RGS_API_URL") ?:
+                                   signingProps.getProperty("RGS_API_URL") ?:
+                                   (project.hasProperty("RGS_API_URL") ? project.property("RGS_API_URL") : null) ?:
+                                   "https://api.rgsledger.rajivsharma.online"
+
+            // Production APK must never default to private or local loopback addresses
+            def isLocalOrPrivate = candidateProdUrl.contains("localhost") ||
+                                   candidateProdUrl.contains("127.0.0.1") ||
+                                   candidateProdUrl.contains("10.") ||
+                                   candidateProdUrl.contains("192.168.")
+
+            def prodApiUrl = isLocalOrPrivate ? "https://api.rgsledger.rajivsharma.online" : candidateProdUrl.trim().replaceAll('/+$', '')
             buildConfigField "String", "DEFAULT_API_URL", "\"${prodApiUrl}\""
 
             if (signingConfigs.release.storeFile != null && signingConfigs.release.storeFile.exists()) {

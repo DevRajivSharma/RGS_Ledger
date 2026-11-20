@@ -1,6 +1,6 @@
 import { Router, Response } from 'express';
 import mongoose from 'mongoose';
-import { PaymentRequestModel, MerchantModel, MerchantBankAccountModel, findMerchantByIdDefensive } from '../../database/models.js';
+import { PaymentRequestModel, MerchantBankAccountModel, findMerchantByIdDefensive } from '../../database/models.js';
 import { requireAuth, AuthenticatedRequest } from '../../middleware/auth.js';
 import { CreatePaymentRequestSchema } from '@rgs-ledger/validation';
 import { ApiResponse, CancelPaymentResponse } from '@rgs-ledger/api-contracts';

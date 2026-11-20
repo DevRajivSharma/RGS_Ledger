@@ -1,6 +1,3 @@
-/login      https://app.rgsledger.rajivsharma.online/login   302
-/signup     https://app.rgsledger.rajivsharma.online/signup  302
-/register   https://app.rgsledger.rajivsharma.online/signup  302
 /privacy    /privacy.html    200
 /privacy/   /privacy.html    200
 /terms      /terms.html      200

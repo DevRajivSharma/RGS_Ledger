@@ -10,7 +10,12 @@ import { FAQPage } from './pages/FAQPage.js';
 import { ContactPage } from './pages/ContactPage.js';
 import { LegalPage } from './pages/LegalPages.js';
 import { AndroidDownloadPage } from './pages/AndroidDownloadPage.js';
-import { APP_URLS, getMerchantLoginUrl, getMerchantSignupUrl } from './config/urls.js';
+import { getMerchantLoginUrl } from './config/urls.js';
+
+const isAuthOrOnboardingPath = (path: string): boolean => {
+  const p = path.split('?')[0] || '';
+  return p === '/login' || p === '/signup' || p === '/register' || p.startsWith('/onboarding');
+};
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState<string>(() => {
@@ -20,13 +25,8 @@ export default function App() {
   // Client-side authentication redirect enforcement
   // Public website must never host login or signup flows.
   useEffect(() => {
-    const path = window.location.pathname;
-    if (path === '/login') {
+    if (isAuthOrOnboardingPath(window.location.pathname)) {
       window.location.replace(getMerchantLoginUrl(window.location.search));
-    } else if (path === '/signup' || path === '/register') {
-      window.location.replace(getMerchantSignupUrl(window.location.search));
-    } else if (path.startsWith('/onboarding')) {
-      window.location.replace(APP_URLS.merchantDashboard);
     }
   }, []);
 
@@ -34,16 +34,8 @@ export default function App() {
   useEffect(() => {
     const handlePopState = () => {
       const path = window.location.pathname || '/';
-      if (path === '/login') {
+      if (isAuthOrOnboardingPath(path)) {
         window.location.replace(getMerchantLoginUrl(window.location.search));
-        return;
-      }
-      if (path === '/signup' || path === '/register') {
-        window.location.replace(getMerchantSignupUrl(window.location.search));
-        return;
-      }
-      if (path.startsWith('/onboarding')) {
-        window.location.replace(APP_URLS.merchantDashboard);
         return;
       }
       setCurrentPath(path);
@@ -53,18 +45,9 @@ export default function App() {
   }, []);
 
   const navigateTo = (path: string) => {
-    if (path === '/login' || path.startsWith('/login?')) {
+    if (isAuthOrOnboardingPath(path)) {
       const search = path.includes('?') ? path.slice(path.indexOf('?')) : undefined;
       window.location.href = getMerchantLoginUrl(search);
-      return;
-    }
-    if (path === '/signup' || path.startsWith('/signup?') || path === '/register' || path.startsWith('/register?')) {
-      const search = path.includes('?') ? path.slice(path.indexOf('?')) : undefined;
-      window.location.href = getMerchantSignupUrl(search);
-      return;
-    }
-    if (path.startsWith('/onboarding')) {
-      window.location.href = APP_URLS.merchantDashboard;
       return;
     }
 
@@ -102,30 +85,8 @@ export default function App() {
       case '/acceptable-use':
         return <LegalPage type="acceptable-use" onNavigate={navigateTo} />;
       case '/login':
-        return (
-          <div style={{ textAlign: 'center', padding: '100px 20px', minHeight: '50vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <h2 style={{ fontSize: '20px', color: '#111827', marginBottom: '8px' }}>Redirecting to Merchant Portal...</h2>
-            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '16px' }}>
-              Authentication is managed securely at the merchant application.
-            </p>
-            <a href={getMerchantLoginUrl()} style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'underline' }}>
-              Click here if you are not redirected automatically →
-            </a>
-          </div>
-        );
       case '/signup':
       case '/register':
-        return (
-          <div style={{ textAlign: 'center', padding: '100px 20px', minHeight: '50vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <h2 style={{ fontSize: '20px', color: '#111827', marginBottom: '8px' }}>Redirecting to Merchant Registration...</h2>
-            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '16px' }}>
-              Merchant registration is handled directly on the merchant platform.
-            </p>
-            <a href={getMerchantSignupUrl()} style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'underline' }}>
-              Click here if you are not redirected automatically →
-            </a>
-          </div>
-        );
       case '/onboarding':
       case '/onboarding/business':
       case '/onboarding/upi':
@@ -135,8 +96,11 @@ export default function App() {
       case '/onboarding/review':
         return (
           <div style={{ textAlign: 'center', padding: '100px 20px', minHeight: '50vh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
-            <h2 style={{ fontSize: '20px', color: '#111827', marginBottom: '8px' }}>Redirecting to Merchant Onboarding...</h2>
-            <a href={APP_URLS.merchantDashboard} style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'underline' }}>
+            <h2 style={{ fontSize: '20px', color: '#111827', marginBottom: '8px' }}>Redirecting to Merchant Portal...</h2>
+            <p style={{ color: '#6B7280', fontSize: '14px', marginBottom: '16px' }}>
+              Authentication is managed securely at the merchant application root.
+            </p>
+            <a href={getMerchantLoginUrl()} style={{ color: '#2563EB', fontWeight: 600, textDecoration: 'underline' }}>
               Click here if you are not redirected automatically →
             </a>
           </div>

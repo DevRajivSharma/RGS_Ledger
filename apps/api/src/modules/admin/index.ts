@@ -1,5 +1,6 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'node:crypto';
+import mongoose from 'mongoose';
 import { config } from '../../config/index.js';
 import { platformConfigService } from './platform-config.service.js';
 import {
@@ -557,7 +558,7 @@ router.get('/merchants', requireAuth as any, requireAdmin as any, async (req: Au
  */
 router.get('/merchants/:id', requireAuth as any, requireAdmin as any, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const merchantId = req.params.id;
+    const merchantId = req.params.id || '';
     const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
     if (!merchant) {
       res.status(404).json({
@@ -693,7 +694,7 @@ router.get('/merchants/:id', requireAuth as any, requireAdmin as any, async (req
  */
 router.post('/merchants/:id/suspend', requireAuth as any, requireAdmin as any, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const merchantId = req.params.id;
+    const merchantId = req.params.id || '';
     const validated = SuspendMerchantSchema.parse(req.body);
 
     const merchant = (await findMerchantByIdDefensive(merchantId)) as any;
@@ -745,7 +746,7 @@ router.post('/merchants/:id/suspend', requireAuth as any, requireAdmin as any, a
  */
 router.post('/merchants/:id/reactivate', requireAuth as any, requireAdmin as any, async (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const merchantId = req.params.id;
+    const merchantId = req.params.id || '';
     const validated = ReactivateMerchantSchema.parse(req.body || {});
 
     const merchant = (await findMerchantByIdDefensive(merchantId)) as any;

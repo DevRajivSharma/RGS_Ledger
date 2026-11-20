@@ -31,12 +31,27 @@ interface CapturedItem {
   utr?: string;
 }
 
-// Default API URL configured dynamically: defaults to production endpoint in release builds
-const DEFAULT_API_URL =
-  process.env.EXPO_PUBLIC_API_URL ||
-  (typeof __DEV__ !== 'undefined' && __DEV__
-    ? 'http://localhost:4000'
-    : 'https://api.rgsledger.rajivsharma.online');
+export const PRODUCTION_API_URL = 'https://api.rgsledger.rajivsharma.online';
+
+export const isLocalOrPrivateUrl = (url: string): boolean => {
+  if (!url) return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes('localhost') ||
+    lower.includes('127.0.0.1') ||
+    lower.includes('10.0.2.2') ||
+    lower.includes('10.') ||
+    lower.includes('192.168.')
+  );
+};
+
+// Default API URL: defaults strictly to production endpoint in release builds and on real networks
+export const DEFAULT_API_URL =
+  typeof __DEV__ !== 'undefined' && __DEV__ && process.env.EXPO_PUBLIC_API_URL
+    ? process.env.EXPO_PUBLIC_API_URL
+    : (process.env.EXPO_PUBLIC_API_URL && !isLocalOrPrivateUrl(process.env.EXPO_PUBLIC_API_URL)
+      ? process.env.EXPO_PUBLIC_API_URL
+      : PRODUCTION_API_URL);
 
 export default function App() {
   // Device pairing state
@@ -47,6 +62,7 @@ export default function App() {
   const [deviceName, setDeviceName] = useState('Merchant Android Terminal');
   const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_URL);
   const [isPairing, setIsPairing] = useState(false);
+  const [isCheckingHealth, setIsCheckingHealth] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
   // Status & local queue state
@@ -121,6 +137,29 @@ export default function App() {
     }
     setDeviceState(null);
     setFeedback({ type: 'info', message: 'Device disconnected and unpaired.' });
+  };
+
+  // Check API health endpoint
+  const handleCheckHealth = async (overrideUrl?: string) => {
+    const target = (overrideUrl || (deviceState ? deviceState.apiBaseUrl : apiBaseUrl)).trim().replace(/\/+$/, '');
+    if (!target) {
+      setFeedback({ type: 'error', message: 'Please enter an API Base URL.' });
+      return;
+    }
+    setIsCheckingHealth(true);
+    setFeedback(null);
+    try {
+      const res = await fetch(`${target}/health`);
+      if (res.ok) {
+        setFeedback({ type: 'success', message: `✓ API is reachable and healthy at ${target}` });
+      } else {
+        setFeedback({ type: 'error', message: `API returned HTTP ${res.status} from ${target}` });
+      }
+    } catch (err: any) {
+      setFeedback({ type: 'error', message: `Cannot reach API at ${target}: ${err.message}` });
+    } finally {
+      setIsCheckingHealth(false);
+    }
   };
 
   // Open Android Notification Listener Settings
@@ -296,22 +335,36 @@ export default function App() {
                 style={styles.textInput}
                 value={apiBaseUrl}
                 onChangeText={setApiBaseUrl}
-                placeholder="e.g. http://10.0.2.2:4000 or http://localhost:4000"
+                placeholder="https://api.rgsledger.rajivsharma.online"
                 autoCapitalize="none"
               />
             </View>
 
-            <TouchableOpacity
-              style={[styles.primaryButton, isPairing && styles.primaryButtonDisabled]}
-              onPress={handlePairDevice}
-              disabled={isPairing}
-            >
-              {isPairing ? (
-                <ActivityIndicator color="#FFF" />
-              ) : (
-                <Text style={styles.primaryButtonText}>Pair Device</Text>
-              )}
-            </TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 10, marginTop: 8 }}>
+              <TouchableOpacity
+                style={[styles.actionButtonOutline, { flex: 1, paddingVertical: 12 }]}
+                onPress={() => handleCheckHealth(apiBaseUrl)}
+                disabled={isCheckingHealth}
+              >
+                {isCheckingHealth ? (
+                  <ActivityIndicator color="#2563EB" size="small" />
+                ) : (
+                  <Text style={styles.actionButtonOutlineText}>Test Connection</Text>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.primaryButton, { flex: 1, marginTop: 0 }, isPairing && styles.primaryButtonDisabled]}
+                onPress={handlePairDevice}
+                disabled={isPairing}
+              >
+                {isPairing ? (
+                  <ActivityIndicator color="#FFF" />
+                ) : (
+                  <Text style={styles.primaryButtonText}>Pair Device</Text>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         ) : (
           /* PAIRED / CONNECTED DASHBOARD */
@@ -320,6 +373,7 @@ export default function App() {
               <View>
                 <Text style={styles.cardTitle}>{deviceState.merchantName}</Text>
                 <Text style={styles.deviceSubtitle}>ID: {deviceState.deviceId}</Text>
+                <Text style={[styles.deviceSubtitle, { color: '#60A5FA' }]}>API: {deviceState.apiBaseUrl}</Text>
               </View>
               <View style={[styles.statusBadge, styles.statusBadgeActive]}>
                 <Text style={[styles.statusBadgeText, styles.statusBadgeTextActive]}>● PAIRED</Text>
@@ -354,6 +408,16 @@ export default function App() {
               >
                 <Text style={styles.syncButtonText}>
                   {isSyncing ? 'Uploading...' : '↻ Sync Queue Now'}
+                </Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[styles.actionButtonOutline, { paddingVertical: 10, paddingHorizontal: 12, borderColor: '#93C5FD' }]}
+                onPress={() => handleCheckHealth(deviceState.apiBaseUrl)}
+                disabled={isCheckingHealth}
+              >
+                <Text style={[styles.actionButtonOutlineText, { color: '#2563EB', fontSize: 13 }]}>
+                  {isCheckingHealth ? 'Checking...' : 'Check API'}
                 </Text>
               </TouchableOpacity>
 
