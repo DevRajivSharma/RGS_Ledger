@@ -2,6 +2,7 @@ package com.rgsledger.companion.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import com.rgsledger.companion.BuildConfig
 
 class DevicePreferences(context: Context) {
     private val prefs: SharedPreferences =
@@ -24,7 +25,7 @@ class DevicePreferences(context: Context) {
         set(value) = prefs.edit().putString(KEY_MERCHANT_NAME, value).apply()
 
     var apiBaseUrl: String
-        get() = prefs.getString(KEY_API_URL, "http://10.0.2.2:4000") ?: "http://10.0.2.2:4000"
+        get() = prefs.getString(KEY_API_URL, BuildConfig.DEFAULT_API_URL) ?: BuildConfig.DEFAULT_API_URL
         set(value) = prefs.edit().putString(KEY_API_URL, value).apply()
 
     val isPaired: Boolean

@@ -1,0 +1,21 @@
+{
+  "versionName": "0.1.0",
+  "versionCode": 1,
+  "releaseDate": "2026-11-20",
+  "minimumAndroidVersion": "Android 8.0 (API 26)",
+  "targetAndroidVersion": "Android 14 (API 34)",
+  "packageName": "com.rgsledger.companion",
+  "apkDownloadUrl": "/downloads/android/rgs-companion-release.apk",
+  "apkVersionedUrl": "/downloads/android/rgs-companion-v0.1.0.apk",
+  "fileSizeBytes": 3298054,
+  "fileSizeFormatted": "3.15 MB",
+  "sha256": "75164e31f37b471d14977026d248fee5919bd4dd9c0ae4e0e4712f7981d97478",
+  "certificateFingerprintSha256": "c9240b7b9ce4a79dcc62ce821477f56026c74f136138b7581e16e219e47a34b2",
+  "releaseNotes": [
+    "Initial public release of the RGS Ledger Android Companion.",
+    "Native Kotlin NotificationListenerService integration for bank credit notification capture.",
+    "Offline encrypted SQLite persistence with WorkManager automated background synchronization.",
+    "Secure 8-character rotating device pairing mechanism.",
+    "Integrated support for multi-bank credit notification extraction."
+  ]
+}

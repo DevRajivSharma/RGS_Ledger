@@ -11,6 +11,7 @@ import { ContactPage } from './pages/ContactPage.js';
 import { LegalPage } from './pages/LegalPages.js';
 import { AuthPage } from './pages/AuthPages.js';
 import { OnboardingWizard } from './pages/OnboardingWizard.js';
+import { AndroidDownloadPage } from './pages/AndroidDownloadPage.js';
 import { APP_URLS } from './config/urls.js';
 
 export default function App() {
@@ -57,6 +58,10 @@ export default function App() {
         return <PricingPage onNavigate={navigateTo} />;
       case '/faq':
         return <FAQPage onNavigate={navigateTo} />;
+      case '/downloads/android':
+      case '/download':
+      case '/downloads':
+        return <AndroidDownloadPage onNavigate={navigateTo} />;
       case '/contact':
         return <ContactPage />;
       case '/terms':

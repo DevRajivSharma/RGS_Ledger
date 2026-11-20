@@ -15,6 +15,7 @@ export const Navbar: React.FC<NavbarProps> = ({ currentPath, onNavigate, isAuthe
     { label: 'Product', path: '/product' },
     { label: 'How It Works', path: '/how-it-works' },
     { label: 'Features', path: '/features' },
+    { label: 'Android App', path: '/downloads/android' },
     { label: 'Pricing', path: '/pricing' },
     { label: 'FAQ', path: '/faq' },
     { label: 'Contact', path: '/contact' }

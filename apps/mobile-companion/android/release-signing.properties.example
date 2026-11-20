@@ -1,0 +1,20 @@
+# ==============================================================================
+# RGS LEDGER COMPANION — RELEASE SIGNING CONFIGURATION TEMPLATE
+# DO NOT COMMIT REAL PASSWORDS OR PRIVATE KEYSTORES TO VERSION CONTROL.
+# Copy this file to release-signing.properties (which is git-ignored) or set env vars.
+# ==============================================================================
+
+# Relative or absolute path to the PKCS12 / JKS release keystore
+RGS_RELEASE_STORE_FILE=keystore/release.keystore
+
+# Keystore password
+RGS_RELEASE_STORE_PASSWORD=your_secure_keystore_password_here
+
+# Key alias inside the keystore
+RGS_RELEASE_KEY_ALIAS=rgsledger
+
+# Private key password
+RGS_RELEASE_KEY_PASSWORD=your_secure_key_password_here
+
+# Production API Endpoint embedded in release build (Never localhost in production)
+RGS_API_URL=https://api.rgsledger.rajivsharma.online

@@ -45,6 +45,9 @@ coverage/
 .expo/
 .expo-shared/
 *.jks
+*.keystore
+keystore/
+release-signing.properties
 *.p8
 *.p12
 *.key

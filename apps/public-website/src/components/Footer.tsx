@@ -48,6 +48,11 @@ export const Footer: React.FC<FooterProps> = ({ onNavigate }) => {
                 </button>
               </li>
               <li>
+                <button onClick={() => onNavigate('/downloads/android')} style={{ background: 'none', border: 'none', color: '#60A5FA', fontWeight: 600, cursor: 'pointer', padding: 0, textAlign: 'left' }}>
+                  📱 Download Android App
+                </button>
+              </li>
+              <li>
                 <button onClick={() => onNavigate('/pricing')} style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer', padding: 0, textAlign: 'left' }}>
                   Beta Access & Pricing
                 </button>

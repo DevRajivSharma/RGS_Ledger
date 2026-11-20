@@ -31,6 +31,13 @@ interface CapturedItem {
   utr?: string;
 }
 
+// Default API URL configured dynamically: defaults to production endpoint in release builds
+const DEFAULT_API_URL =
+  process.env.EXPO_PUBLIC_API_URL ||
+  (typeof __DEV__ !== 'undefined' && __DEV__
+    ? 'http://localhost:4000'
+    : 'https://api.rgsledger.rajivsharma.online');
+
 export default function App() {
   // Device pairing state
   const [deviceState, setDeviceState] = useState<PairedDeviceState | null>(null);
@@ -38,7 +45,7 @@ export default function App() {
   // Form inputs
   const [pairingCode, setPairingCode] = useState('');
   const [deviceName, setDeviceName] = useState('Merchant Android Terminal');
-  const [apiBaseUrl, setApiBaseUrl] = useState('http://localhost:4000');
+  const [apiBaseUrl, setApiBaseUrl] = useState(DEFAULT_API_URL);
   const [isPairing, setIsPairing] = useState(false);
   const [feedback, setFeedback] = useState<{ type: 'success' | 'error' | 'info'; message: string } | null>(null);
 
