@@ -2,6 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { getMerchantLoginUrl, getMerchantSignupUrl, APP_URLS } from '../src/config/urls.js';
 
@@ -214,5 +215,36 @@ describe('Google OAuth Branding & Legal Pages Verification', () => {
     const distSitemapContent = fs.readFileSync(distSitemapPath, 'utf-8');
     assert.ok(distSitemapContent.includes('https://rgsledger.rajivsharma.online/privacy'));
     assert.ok(distSitemapContent.includes('https://rgsledger.rajivsharma.online/terms'));
+  });
+
+  it('verifies Android companion APK and latest.json exist and match cryptographic hashes', () => {
+    const latestJsonPath = path.join(websiteRoot, 'public', 'downloads', 'android', 'latest.json');
+    const releaseApkPath = path.join(websiteRoot, 'public', 'downloads', 'android', 'rgs-companion-release.apk');
+    const versionedApkPath = path.join(websiteRoot, 'public', 'downloads', 'android', 'rgs-companion-v0.1.0.apk');
+
+    assert.ok(fs.existsSync(latestJsonPath), 'latest.json must exist');
+    assert.ok(fs.existsSync(releaseApkPath), 'rgs-companion-release.apk must exist in public assets');
+    assert.ok(fs.existsSync(versionedApkPath), 'rgs-companion-v0.1.0.apk must exist in public assets');
+
+    const latestJsonRaw = fs.readFileSync(latestJsonPath, 'utf-8');
+    const metadata = JSON.parse(latestJsonRaw);
+
+    assert.equal(metadata.versionName, '0.1.0');
+    assert.equal(metadata.versionCode, 1);
+    assert.equal(metadata.packageName, 'com.rgsledger.companion');
+    assert.equal(metadata.apkDownloadUrl, '/downloads/android/rgs-companion-release.apk');
+
+    const apkBytes = fs.readFileSync(releaseApkPath);
+    const computedSha = crypto.createHash('sha256').update(apkBytes).digest('hex');
+
+    assert.equal(apkBytes.length, metadata.fileSizeBytes, 'APK file length must match latest.json fileSizeBytes');
+    assert.equal(computedSha, metadata.sha256, 'APK SHA256 must match latest.json sha256');
+
+    // Check vercel.json headers for APK MIME type
+    const vercelConfig = JSON.parse(fs.readFileSync(vercelJsonPath, 'utf-8'));
+    const apkHeaderRule = vercelConfig.headers?.find((h: { source: string }) => h.source.includes('apk'));
+    assert.ok(apkHeaderRule, 'vercel.json must have headers rule for .apk files');
+    const contentTypeHeader = apkHeaderRule.headers?.find((hdr: { key: string }) => hdr.key === 'Content-Type');
+    assert.equal(contentTypeHeader?.value, 'application/vnd.android.package-archive');
   });
 });

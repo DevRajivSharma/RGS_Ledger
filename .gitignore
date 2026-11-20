@@ -58,3 +58,5 @@ web-build/
 local.properties
 *.apk
 *.aab
+# Explicitly track public website companion distribution APK artifacts
+!apps/public-website/public/downloads/android/*.apk

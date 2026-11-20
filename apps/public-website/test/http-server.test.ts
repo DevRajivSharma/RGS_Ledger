@@ -45,8 +45,15 @@ describe('HTTP Production Static Server Verification', () => {
         if (filePath.endsWith('.txt')) contentType = 'text/plain; charset=utf-8';
         if (filePath.endsWith('.xml')) contentType = 'application/xml; charset=utf-8';
         if (filePath.endsWith('.js')) contentType = 'application/javascript; charset=utf-8';
+        if (filePath.endsWith('.json')) contentType = 'application/json; charset=utf-8';
+        if (filePath.endsWith('.apk')) contentType = 'application/vnd.android.package-archive';
 
-        res.writeHead(200, { 'Content-Type': contentType });
+        const headers: Record<string, string> = { 'Content-Type': contentType };
+        if (filePath.endsWith('.apk')) {
+          headers['Content-Disposition'] = 'attachment; filename="rgs-companion-release.apk"';
+        }
+
+        res.writeHead(200, headers);
         fs.createReadStream(filePath).pipe(res);
       } else {
         res.writeHead(404, { 'Content-Type': 'text/plain' });
@@ -139,5 +146,34 @@ describe('HTTP Production Static Server Verification', () => {
     const text = await res.text();
     assert.ok(text.includes('https://rgsledger.rajivsharma.online/privacy'));
     assert.ok(text.includes('https://rgsledger.rajivsharma.online/terms'));
+  });
+
+  it('serves /downloads/android/latest.json with HTTP 200 and valid JSON metadata', async () => {
+    const res = await fetch(`${baseUrl}/downloads/android/latest.json`);
+    assert.equal(res.status, 200);
+    assert.ok(res.headers.get('content-type')?.includes('application/json'));
+    const data = await res.json() as Record<string, unknown>;
+    assert.equal(data.versionName, '0.1.0');
+    assert.equal(data.versionCode, 1);
+    assert.equal(data.packageName, 'com.rgsledger.companion');
+    assert.equal(data.apkDownloadUrl, '/downloads/android/rgs-companion-release.apk');
+    assert.equal(data.fileSizeBytes, 3299757);
+    assert.equal(data.sha256, '40195a72ae99744fd49e3a5bedab0fdad39e8dc5e3d1b893ad7b44d506357075');
+  });
+
+  it('serves /downloads/android/rgs-companion-release.apk with HTTP 200, valid MIME type, and correct binary size', async () => {
+    const res = await fetch(`${baseUrl}/downloads/android/rgs-companion-release.apk`);
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('content-type'), 'application/vnd.android.package-archive');
+    assert.equal(res.headers.get('content-disposition'), 'attachment; filename="rgs-companion-release.apk"');
+
+    const buffer = Buffer.from(await res.arrayBuffer());
+    assert.equal(buffer.length, 3299757);
+
+    // Verify ZIP / APK magic bytes (PK\x03\x04)
+    assert.equal(buffer[0], 0x50); // P
+    assert.equal(buffer[1], 0x4b); // K
+    assert.equal(buffer[2], 0x03);
+    assert.equal(buffer[3], 0x04);
   });
 });
