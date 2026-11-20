@@ -1,0 +1,20 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": [
+    "packages/*/src/**/*",
+    "apps/api/src/**/*",
+    "apps/public-website/src/**/*",
+    "apps/merchant-dashboard/src/**/*",
+    "apps/hosted-checkout/src/**/*",
+    "apps/admin-dashboard/src/**/*",
+    "apps/developer-portal/src/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "apps/mobile-companion"
+  ]
+}

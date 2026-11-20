@@ -1,0 +1,15 @@
+{
+  "name": "@rgs-ledger/api-contracts",
+  "version": "0.1.0",
+  "description": "Standardized REST API contract interfaces and DTOs for RGS Ledger",
+  "type": "module",
+  "main": "src/index.ts",
+  "types": "src/index.ts",
+  "private": true,
+  "dependencies": {
+    "@rgs-ledger/shared-types": "*"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  }
+}

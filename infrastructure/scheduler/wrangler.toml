@@ -1,0 +1,9 @@
+name = "rgs-ledger-scheduler"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+
+[triggers]
+crons = ["* * * * *"] # Runs every minute to dispatch background job lease triggers
+
+[vars]
+API_DISPATCH_URL = "https://api.rgsledger.com/api/v1/background-jobs/dispatch"

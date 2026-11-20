@@ -1,0 +1,25 @@
+{
+  "name": "@rgs-ledger/mobile-companion",
+  "version": "0.1.0",
+  "private": true,
+  "main": "App.tsx",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "web": "expo start --web",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@rgs-ledger/api-contracts": "*",
+    "@rgs-ledger/shared-types": "*",
+    "expo": "~52.0.0",
+    "expo-status-bar": "~2.0.0",
+    "react": "18.3.1",
+    "react-native": "0.76.2"
+  },
+  "devDependencies": {
+    "@types/react": "~18.3.12",
+    "typescript": "^5.6.3"
+  }
+}

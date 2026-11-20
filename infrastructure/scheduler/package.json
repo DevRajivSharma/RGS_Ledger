@@ -1,0 +1,14 @@
+{
+  "name": "@rgs-ledger/scheduler-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cloudflare Worker Cron Scheduler for dispatching periodic background tasks to RGS Ledger API",
+  "main": "src/index.ts",
+  "scripts": {
+    "deploy": "wrangler deploy"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241112.0",
+    "wrangler": "^3.86.0"
+  }
+}

@@ -1,0 +1,42 @@
+{
+  "name": "rgs-ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Production-oriented UPI QR payment evidence and verification platform",
+  "author": "RGS Ledger Team",
+  "license": "UNLICENSED",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "imports": {
+    "#shared-types": "./packages/shared-types/src/index.ts",
+    "@rgs-ledger/shared-types": "./packages/shared-types/src/index.ts",
+    "@rgs-ledger/api-contracts": "./packages/api-contracts/src/index.ts",
+    "@rgs-ledger/validation": "./packages/validation/src/index.ts",
+    "@rgs-ledger/ui": "./packages/ui/src/index.tsx",
+    "@rgs-ledger/upi-adapter": "./packages/upi-adapter/src/index.ts",
+    "@rgs-ledger/sdk": "./packages/sdk/src/index.ts"
+  },
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "tsx --test packages/*/src/**/*.test.ts apps/api/src/**/*.test.ts",
+    "lint": "eslint . --ext .ts,.tsx",
+    "format": "prettier --write \"**/*.{ts,tsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,json,md}\""
+  },
+  "devDependencies": {
+    "@types/pngjs": "^6.0.5",
+    "@types/qrcode": "^1.5.6",
+    "jsqr": "^1.4.0",
+    "prettier": "^3.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.6.3"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
